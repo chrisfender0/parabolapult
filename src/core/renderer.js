@@ -26,10 +26,14 @@ export function createRenderer(canvas) {
     const halfWidth = WORLD_HALF_WIDTH;
     const halfHeight = halfWidth / aspect;
 
-    camera.left = WORLD_CENTER_X - halfWidth;
-    camera.right = WORLD_CENTER_X + halfWidth;
-    camera.top = WORLD_CENTER_Y + halfHeight;
-    camera.bottom = WORLD_CENTER_Y - halfHeight;
+    // OrthographicCamera's left/right/top/bottom are offsets from the
+    // camera's own position, not absolute world coordinates -- the camera
+    // sits at (WORLD_CENTER_X, WORLD_CENTER_Y), so the frustum bounds must
+    // be relative to that, not re-centered on it a second time.
+    camera.left = -halfWidth;
+    camera.right = halfWidth;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
 
     renderer.setSize(width, height, false);
