@@ -1,4 +1,4 @@
-import { getEntries } from '../../storage/leaderboard.js';
+import { getEntries, clearAll, hasStoredData } from '../../storage/leaderboard.js';
 import { mountIdleScene } from '../idleScene.js';
 
 let unmountIdle = null;
@@ -54,8 +54,60 @@ function renderLeaderboard(container) {
   container.appendChild(table);
 }
 
-export function mount(root, ctx) {
-  unmountIdle = mountIdleScene(ctx);
+// Small, muted, bottom of the page — inline "are you sure" rather than a
+// window.confirm dialog, hidden entirely when there's nothing to reset.
+function renderResetControl(container, onReset) {
+  if (!hasStoredData()) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'reset-data';
+
+  function renderIdle() {
+    wrap.replaceChildren();
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reset-data__button';
+    button.textContent = 'Reset Data';
+    button.addEventListener('click', renderConfirm);
+    wrap.appendChild(button);
+  }
+
+  function renderConfirm() {
+    wrap.replaceChildren();
+
+    const label = document.createElement('span');
+    label.className = 'reset-data__label';
+    label.textContent = 'Are you sure?';
+    wrap.appendChild(label);
+
+    const yesButton = document.createElement('button');
+    yesButton.type = 'button';
+    yesButton.className = 'reset-data__button reset-data__button--danger';
+    yesButton.textContent = 'Yes';
+    yesButton.addEventListener('click', () => {
+      clearAll();
+      onReset();
+    });
+    wrap.appendChild(yesButton);
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'reset-data__button';
+    cancelButton.textContent = 'Cancel';
+    cancelButton.addEventListener('click', renderIdle);
+    wrap.appendChild(cancelButton);
+  }
+
+  renderIdle();
+  container.appendChild(wrap);
+}
+
+// Rebuilds just the screen's content (leaderboard, Play, Reset Data) —
+// callable again after a reset without touching the idle-scene subscription,
+// which only needs to be set up once per mount/unmount cycle.
+function renderBody(root, ctx) {
+  root.replaceChildren();
 
   const screen = document.createElement('div');
   screen.className = 'screen screen--landing';
@@ -82,7 +134,14 @@ export function mount(root, ctx) {
   playButton.addEventListener('click', () => ctx.showScreen('setup'));
   screen.appendChild(playButton);
 
+  renderResetControl(screen, () => renderBody(root, ctx));
+
   root.appendChild(screen);
+}
+
+export function mount(root, ctx) {
+  unmountIdle = mountIdleScene(ctx);
+  renderBody(root, ctx);
 }
 
 export function unmount() {

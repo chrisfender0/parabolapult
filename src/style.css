@@ -444,3 +444,41 @@ body {
 .result__row--miss td:last-child {
   color: var(--color-crash);
 }
+
+/* Reset Data — small, muted, bottom of the landing page */
+
+.reset-data {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.reset-data__label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.reset-data__button {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-grid-line);
+  background: transparent;
+  color: var(--color-ink);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.reset-data__button:hover {
+  opacity: 1;
+}
+
+.reset-data__button--danger {
+  border-color: var(--color-crash);
+  color: var(--color-crash);
+  opacity: 0.85;
+}

@@ -3,8 +3,9 @@
 // disabled) by falling back to an empty/default value rather than
 // throwing — the game should still be playable even if nothing persists.
 
-const LEADERBOARD_KEY = 'parabolapult:leaderboard';
-const LAST_NAME_KEY = 'parabolapult:lastName';
+const KEY_PREFIX = 'parabolapult:';
+const LEADERBOARD_KEY = `${KEY_PREFIX}leaderboard`;
+const LAST_NAME_KEY = `${KEY_PREFIX}lastName`;
 const MAX_ENTRIES = 20;
 
 function isValidEntry(entry) {
@@ -83,10 +84,28 @@ export function setLastName(name) {
   }
 }
 
+function storedKeys() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(KEY_PREFIX)) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
+/** True if any parabolapult: key has ever been written — controls whether "Reset Data" shows at all. */
+export function hasStoredData() {
+  return storedKeys().length > 0;
+}
+
+/** Removes every parabolapult:* key, not just the leaderboard/name — a full wipe. */
 export function clearAll() {
   try {
-    localStorage.removeItem(LEADERBOARD_KEY);
-    localStorage.removeItem(LAST_NAME_KEY);
+    for (const key of storedKeys()) localStorage.removeItem(key);
   } catch {
     // Ignore — non-critical.
   }
