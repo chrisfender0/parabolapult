@@ -1,4 +1,3 @@
-import { buildWorld } from '../../world/index.js';
 import { worldXForMarker } from '../../world/ruler.js';
 import { Projectile } from '../../game/Projectile.js';
 import { GameController } from '../../game/GameController.js';
@@ -19,16 +18,16 @@ const CRASH_COLOR = 0xff4d5e; // var(--color-crash)
 let cleanup = null;
 
 /**
- * Builds the world, instantiates the controller, mounts the HUD, and
- * starts a round for ctx.difficulty / ctx.playerName.
+ * Reuses the persistent world (built once in main.js so it's already
+ * visible, dimmed, behind Landing/Setup), instantiates the controller,
+ * mounts the HUD, and starts a round for ctx.difficulty / ctx.playerName.
  *
  * @param {HTMLElement} root - the #ui element the HUD renders into.
- * @param {{ scene, camera, addUpdater, difficulty, playerName }} ctx
+ * @param {{ scene, camera, world, addUpdater, difficulty, playerName }} ctx
  */
 export function mount(root, ctx) {
-  const { scene, camera, addUpdater, difficulty, playerName } = ctx;
-
-  const { launcher, target } = buildWorld(scene);
+  const { scene, camera, world, addUpdater, difficulty, playerName } = ctx;
+  const { launcher, target } = world;
 
   const projectile = new Projectile(launcher.muzzle);
   scene.add(projectile.group);
@@ -68,7 +67,10 @@ export function mount(root, ctx) {
   cleanup = () => {
     removeUpdater();
     hud.unmount();
-    scene.remove(launcher.group, target.group, projectile.group);
+    // launcher/target belong to the persistent world (main.js) and stay
+    // in the scene for Landing/Setup — only the projectile is this
+    // screen's own.
+    scene.remove(projectile.group);
   };
 }
 
