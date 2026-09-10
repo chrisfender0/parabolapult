@@ -3,9 +3,11 @@ import { createRng } from '../utils/rng.js';
 import { makeEasy, makeMedium, checkAnswer } from '../math/equations.js';
 import { makeTrajectory } from '../math/trajectory.js';
 import { resolveOutcome } from './flightOutcome.js';
+import { scoreRound } from './scoring.js';
 import { GameSession } from './GameSession.js';
 
 const MAX_TRIES = 3;
+export const ROUNDS_PER_GAME = 5;
 
 // 'hard' is intentionally absent — it needs the timed multi-equation flow
 // from sessions 10/10.1, not a single generator call.
@@ -19,7 +21,8 @@ const GENERATORS = {
  * launch, resolve the outcome, spend a try, end the round. No UI — driven
  * entirely by method calls and Emitter events.
  *
- * Events: round:begin, try:hit, try:miss, round:won, round:lost, game:over.
+ * Events: round:begin, try:hit, try:miss, round:scored, round:won,
+ * round:lost, game:over.
  */
 export class GameController extends Emitter {
   constructor({ projectile, target, rng = createRng() }) {
@@ -64,7 +67,9 @@ export class GameController extends Emitter {
       equation: this.equation,
       targetMarker: this.targetMarker,
       round: this.session.round,
+      totalRounds: ROUNDS_PER_GAME,
       triesRemaining: this.session.triesRemaining,
+      score: this.session.score,
     });
   }
 
@@ -93,6 +98,11 @@ export class GameController extends Emitter {
     });
 
     if (result.outcome === 'hit') {
+      // triesRemaining is untouched by a hit, so it still reflects tries
+      // left *before* this attempt — e.g. 3 left means this was try 1.
+      const tryIndex = MAX_TRIES - this.session.triesRemaining;
+      this._concludeRound({ hit: true, tryIndex, result });
+
       this.roundOver = true;
       this.emit('try:hit', {
         landedAt: result.landedAt,
@@ -103,6 +113,10 @@ export class GameController extends Emitter {
       return;
     }
 
+    // Any miss breaks a streak, even one that still has retries left —
+    // this round is no longer a first-try hit either way.
+    this.session.streak = 0;
+
     this.session.triesRemaining -= 1;
     this.emit('try:miss', {
       landedAt: result.landedAt,
@@ -111,13 +125,54 @@ export class GameController extends Emitter {
     });
 
     if (this.session.triesRemaining <= 0) {
+      this._concludeRound({ hit: false, tryIndex: MAX_TRIES - 1, result });
+
       this.roundOver = true;
       this.emit('round:lost', { session: this.session });
     }
   }
 
+  // Scores the round exactly once, at the point it actually concludes
+  // (a hit, or the final miss) — not on intermediate misses that still
+  // have retries left.
+  _concludeRound({ hit, tryIndex, result }) {
+    const { points, breakdown } = scoreRound({
+      hit,
+      tryIndex,
+      difficulty: this.session.difficulty,
+      streak: this.session.streak,
+    });
+
+    this.session.score += points;
+    this.session.streak = hit && tryIndex === 0 ? this.session.streak + 1 : 0;
+
+    this.session.rounds.push({
+      round: this.session.round,
+      equation: this.equation.prompt,
+      yourAnswer: result.landedAt,
+      target: result.targetAt,
+      triesUsed: tryIndex + 1,
+      outcome: hit ? 'hit' : 'miss',
+      points,
+      breakdown,
+    });
+
+    this.emit('round:scored', {
+      round: this.session.round,
+      points,
+      breakdown,
+      totalScore: this.session.score,
+    });
+  }
+
+  // Called after a round concludes (win or loss) to advance — either into
+  // a fresh round, or into endGame() once ROUNDS_PER_GAME is reached.
   nextRound() {
     if (!this.session) return;
+    if (this.session.round >= ROUNDS_PER_GAME) {
+      this.endGame();
+      return;
+    }
     this.beginRound();
   }
 

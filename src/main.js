@@ -6,6 +6,7 @@ import { createScreenManager } from './ui/screenManager.js';
 import * as LandingScreen from './ui/screens/Landing.js';
 import * as SetupScreen from './ui/screens/Setup.js';
 import * as GameScreen from './ui/screens/Game.js';
+import * as ResultScreen from './ui/screens/Result.js';
 import './style.css';
 
 const canvas = document.getElementById('app');
@@ -27,7 +28,7 @@ function addUpdater(fn) {
 }
 
 const screens = createScreenManager(uiRoot);
-const registry = { landing: LandingScreen, setup: SetupScreen, game: GameScreen };
+const registry = { landing: LandingScreen, setup: SetupScreen, game: GameScreen, result: ResultScreen };
 
 function showScreen(name, extra = {}) {
   screens.show(registry[name], { scene, camera, world, addUpdater, showScreen, ...extra });

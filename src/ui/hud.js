@@ -18,6 +18,10 @@ export function mountHud(root, game) {
   const hud = document.createElement('div');
   hud.className = 'hud';
 
+  const status = document.createElement('div');
+  status.className = 'hud__status';
+  hud.appendChild(status);
+
   // The target's position is something the player reads off the ruler
   // themselves — this readout only appears in debug mode (see
   // core/debugHooks.js), otherwise it would just hand over the answer.
@@ -60,8 +64,12 @@ export function mountHud(root, game) {
   roundOver.className = 'hud__round-over';
   roundOver.hidden = true;
   const roundOverMessage = document.createElement('p');
+  roundOverMessage.className = 'hud__round-over-title';
   roundOverMessage.textContent = 'Out of tries';
   roundOver.appendChild(roundOverMessage);
+  const roundOverDetail = document.createElement('p');
+  roundOverDetail.className = 'hud__round-over-detail';
+  roundOver.appendChild(roundOverDetail);
   const continueButton = document.createElement('button');
   continueButton.type = 'button';
   continueButton.className = 'hud__continue';
@@ -74,6 +82,7 @@ export function mountHud(root, game) {
   let answerInput = null;
   let shakeTimeoutId = null;
   let advanceTimeoutId = null;
+  let lastLoss = null;
 
   function renderEquation(equation) {
     equationEl.replaceChildren();
@@ -158,8 +167,9 @@ export function mountHud(root, game) {
     game.submit(value);
   }
 
-  function handleRoundBegin({ equation, targetMarker, triesRemaining }) {
+  function handleRoundBegin({ equation, targetMarker, triesRemaining, round, totalRounds, score }) {
     clearTimeout(advanceTimeoutId);
+    status.textContent = `Round ${round} / ${totalRounds} · Score: ${score}`;
     if (isDebugEnabled()) {
       targetReadout.textContent = `Target: marker ${targetMarker}`;
       targetReadout.hidden = false;
@@ -171,6 +181,12 @@ export function mountHud(root, game) {
     setInputEnabled(true);
   }
 
+  function handleScored({ totalScore }) {
+    // Round number in the status line doesn't change until the next
+    // round:begin — only the score needs to jump immediately.
+    status.textContent = status.textContent.replace(/Score: \d+/, `Score: ${totalScore}`);
+  }
+
   function handleHit({ landedAt }) {
     setInputEnabled(false);
     showFeedback(`Nailed it — landed at ${landedAt}!`, 'hit');
@@ -179,14 +195,28 @@ export function mountHud(root, game) {
 
   function handleMiss({ landedAt, targetAt, triesRemaining }) {
     setPips(triesRemaining);
-    showFeedback(`Landed at ${landedAt} — target was ${targetAt}`, 'miss');
+    // Naming the target's position mid-round would hand over the answer
+    // for the remaining retries — only reveal it once the round is
+    // actually over (no tries left) or in debug mode.
+    const revealTarget = triesRemaining === 0 || isDebugEnabled();
+    const message = revealTarget ? `Landed at ${landedAt} — target was ${targetAt}` : `Landed at ${landedAt} — try again`;
+    showFeedback(message, 'miss');
     shakeInput();
     if (answerInput) answerInput.value = '';
     setInputEnabled(triesRemaining > 0);
     if (triesRemaining > 0) answerInput?.focus();
+
+    if (triesRemaining === 0) {
+      // The "Out of tries" overlay covers the feedback line above, so
+      // repeat the reveal there where it's actually legible.
+      lastLoss = { landedAt, targetAt };
+    }
   }
 
   function handleRoundLost() {
+    if (lastLoss) {
+      roundOverDetail.textContent = `You landed at ${lastLoss.landedAt} — the target was at ${lastLoss.targetAt}`;
+    }
     setInputEnabled(false);
     roundOver.hidden = false;
   }
@@ -201,6 +231,7 @@ export function mountHud(root, game) {
 
   const unsubscribers = [
     game.on('round:begin', handleRoundBegin),
+    game.on('round:scored', handleScored),
     game.on('try:hit', handleHit),
     game.on('try:miss', handleMiss),
     game.on('round:lost', handleRoundLost),

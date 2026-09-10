@@ -57,6 +57,16 @@ export function addEntry(entry) {
   return trimmed;
 }
 
+/**
+ * 1-based rank of `entry` within `entries` (as returned by addEntry/getEntries),
+ * found by reference — pass the exact object you gave addEntry. Null if it
+ * isn't present (e.g. it fell off the end past MAX_ENTRIES).
+ */
+export function getRank(entries, entry) {
+  const index = entries.indexOf(entry);
+  return index === -1 ? null : index + 1;
+}
+
 export function getLastName() {
   try {
     return localStorage.getItem(LAST_NAME_KEY) ?? '';

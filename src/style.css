@@ -60,6 +60,13 @@ body {
   background: linear-gradient(to top, rgba(10, 20, 32, 0.92), rgba(10, 20, 32, 0.55) 80%, transparent);
 }
 
+.hud__status {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  letter-spacing: 0.02em;
+}
+
 .hud__target {
   font-size: 0.95rem;
   color: var(--color-accent);
@@ -197,10 +204,17 @@ body {
   text-align: center;
 }
 
-.hud__round-over p {
+.hud__round-over-title {
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--color-crash);
+}
+
+.hud__round-over-detail {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin-top: -0.5rem;
 }
 
 .hud__continue {
@@ -383,4 +397,50 @@ body {
   display: flex;
   gap: 1rem;
   align-items: center;
+}
+
+/* Results screen */
+
+.result__score {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  text-shadow: 0 0 24px rgba(79, 209, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.result__rank {
+  color: var(--color-hit);
+  font-weight: 700;
+}
+
+.result__table {
+  width: 100%;
+  max-width: 34rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.result__table th,
+.result__table td {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-grid-line);
+}
+
+.result__table th {
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.result__row--hit td:last-child {
+  color: var(--color-hit);
+  font-weight: 700;
+}
+
+.result__row--miss td:last-child {
+  color: var(--color-crash);
 }

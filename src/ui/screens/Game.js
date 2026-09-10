@@ -58,6 +58,8 @@ export function mount(root, ctx) {
     effects.add(squashAndFade(projectile.mesh));
   });
 
+  game.on('game:over', ({ session }) => ctx.showScreen('result', { session }));
+
   const removeUpdater = addUpdater((dt) => {
     projectile.update(dt);
     effects.update(dt);

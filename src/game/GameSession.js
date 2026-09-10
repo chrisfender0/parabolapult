@@ -7,6 +7,8 @@ export class GameSession {
     this.round = 0;
     this.score = 0;
     this.triesRemaining = 0;
-    this.history = [];
+    this.streak = 0; // consecutive first-try hits; GameController resets it on any miss
+    this.history = []; // one entry per try (every landing, hit or miss)
+    this.rounds = []; // one entry per completed round, for the results breakdown
   }
 }
