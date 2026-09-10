@@ -1,6 +1,7 @@
 import { createRenderer } from './core/renderer.js';
 import { start } from './core/loop.js';
 import { buildWorld } from './world/index.js';
+import './core/debugHooks.js'; // registers window.__enableDebug() / __disableDebug()
 import { createScreenManager } from './ui/screenManager.js';
 import * as LandingScreen from './ui/screens/Landing.js';
 import * as SetupScreen from './ui/screens/Setup.js';

@@ -11,6 +11,7 @@ import {
   dropIntoContainer,
 } from '../../game/effects.js';
 import { mountHud } from '../hud.js';
+import { exposeDebugHooks } from '../../core/debugHooks.js';
 
 const HIT_COLOR = 0x3ddc84; // var(--color-hit)
 const CRASH_COLOR = 0xff4d5e; // var(--color-crash)
@@ -59,10 +60,8 @@ export function mount(root, ctx) {
 
   game.start({ difficulty, playerName });
 
-  // Exposed for manual testing from the browser console.
-  window.__game = game;
-  window.projectile = projectile;
-  window.target = target;
+  // Only attached when debug mode is on — see core/debugHooks.js.
+  exposeDebugHooks({ __game: game, projectile, target });
 
   cleanup = () => {
     removeUpdater();
