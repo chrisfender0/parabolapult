@@ -2,9 +2,8 @@ import { createRenderer } from './core/renderer.js';
 import { start } from './core/loop.js';
 import { buildWorld } from './world/index.js';
 import { worldXForMarker } from './world/ruler.js';
-import { makeTrajectory } from './math/trajectory.js';
 import { Projectile } from './game/Projectile.js';
-import { resolveOutcome } from './game/flightOutcome.js';
+import { GameController } from './game/GameController.js';
 import {
   createEffectsManager,
   createCameraShake,
@@ -24,42 +23,41 @@ const { scene, camera, renderer } = createRenderer(canvas);
 
 const { ruler, launcher, target } = buildWorld(scene);
 
-// world/target.js doesn't expose its own marker yet (see
-// game/flightOutcome.js), so this session tracks it alongside the visual
-// target. Session 6's GameController takes over ownership of this.
-let targetMarker = 12;
-
 const projectile = new Projectile(launcher.muzzle);
 scene.add(projectile.group);
 
 const effects = createEffectsManager();
 const cameraShake = createCameraShake(camera);
 
-projectile.on('land', ({ trajectory }) => {
-  const result = resolveOutcome(trajectory, targetMarker);
+const game = new GameController({ projectile, target });
 
-  if (result.outcome === 'hit') {
-    effects.add(pulseGroup(target.group, { color: HIT_COLOR }));
-    effects.add(dropIntoContainer(projectile.mesh));
-  } else {
-    cameraShake.trigger(0.85);
-    effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
-    effects.add(createGroundFlash(scene, worldXForMarker(result.landedAt), CRASH_COLOR));
-    effects.add(squashAndFade(projectile.mesh));
-  }
+game.on('round:begin', ({ equation, targetMarker, round }) => {
+  console.log(`[round ${round}] ${equation.prompt} (target: ${targetMarker})`);
 });
 
-// Dev-only hooks for testing flights without any UI — session 7 adds the
-// real HUD/input. __fire(n) launches a projectile as if the player had
-// answered n; __setTarget(n) moves the target (and the marker this dev
-// hook compares against) without a full round.
-window.__fire = function __fire(landingX) {
-  projectile.launch(makeTrajectory(landingX));
-};
-window.__setTarget = function __setTarget(marker) {
-  targetMarker = marker;
-  target.setMarker(marker);
-};
+game.on('try:hit', ({ landedAt }) => {
+  console.log(`hit! landed at ${landedAt}`);
+  effects.add(pulseGroup(target.group, { color: HIT_COLOR }));
+  effects.add(dropIntoContainer(projectile.mesh));
+});
+
+game.on('try:miss', ({ landedAt, targetAt, triesRemaining }) => {
+  console.log(`miss — landed at ${landedAt}, target was ${targetAt} (${triesRemaining} tries left)`);
+  cameraShake.trigger(0.85);
+  effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
+  effects.add(createGroundFlash(scene, worldXForMarker(landedAt), CRASH_COLOR));
+  effects.add(squashAndFade(projectile.mesh));
+});
+
+game.on('round:won', () => console.log('round:won'));
+game.on('round:lost', () => console.log('round:lost'));
+game.on('game:over', ({ session }) => console.log('game:over', session));
+
+// Dev/console hooks for testing the full round flow without any UI —
+// session 7 adds the real HUD/input. e.g.
+//   __game.start({ difficulty: 'easy', playerName: 'chris' })
+//   __game.submit('12')
+window.__game = game;
 
 // Exposed for manual testing from the browser console, e.g.
 // target.setMarker(5)
