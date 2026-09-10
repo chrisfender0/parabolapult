@@ -285,8 +285,71 @@ body {
   text-align: center;
   padding: 0.5rem 0;
   font-weight: 600;
+}
+
+.hud__hard-locked-in--neutral {
   color: var(--color-ink);
   opacity: 0.8;
+}
+
+.hud__hard-locked-in--miss {
+  color: var(--color-crash);
+}
+
+/* Hard mode — final equation (real numbers/operators, one blank result) */
+
+.hud__hard-final-form[hidden] {
+  display: none;
+}
+
+.hud__hard-final-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 3px solid var(--color-accent);
+  background: rgba(10, 20, 32, 0.4);
+}
+
+.hud__hard-bar-fill--final {
+  background: var(--color-accent);
+}
+
+.hud__hard-final-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.hud__hard-badge--hard-1 {
+  color: var(--color-hard-1);
+}
+
+.hud__hard-badge--hard-2 {
+  color: var(--color-hard-2);
+}
+
+.hud__hard-badge--hard-3 {
+  color: var(--color-hard-3);
+}
+
+.hud__hard-final-value--hard-1 {
+  color: var(--color-hard-1);
+}
+
+.hud__hard-final-value--hard-2 {
+  color: var(--color-hard-2);
+}
+
+.hud__hard-final-value--hard-3 {
+  color: var(--color-hard-3);
 }
 
 .hud__round-over[hidden] {
@@ -582,4 +645,39 @@ body {
   border-color: var(--color-crash);
   color: var(--color-crash);
   opacity: 0.85;
+}
+
+/* Results screen — hard-round breakdown (typed vs. correct, per color) */
+
+.result__hard-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.result__hard-chip {
+  font-weight: 700;
+}
+
+.result__hard-chip--hard-1 {
+  color: var(--color-hard-1);
+}
+
+.result__hard-chip--hard-2 {
+  color: var(--color-hard-2);
+}
+
+.result__hard-chip--hard-3 {
+  color: var(--color-hard-3);
+}
+
+.result__hard-op {
+  opacity: 0.7;
+}
+
+.result__hard-detail {
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.7;
 }

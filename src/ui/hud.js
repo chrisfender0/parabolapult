@@ -119,6 +119,48 @@ export function mountHud(root, game) {
 
   hud.appendChild(hardPanel);
 
+  // Hard mode's final phase, part 1: recall. Three blank inputs, badged
+  // and colored to the equation each came from, operators shown fixed —
+  // the player has to type the numbers back from memory. Nothing here
+  // is checked for correctness; whatever they type becomes *their*
+  // equation for the solve step next.
+  const hardRecallForm = document.createElement('form');
+  hardRecallForm.className = 'hud__hard-final-form';
+  hardRecallForm.hidden = true;
+
+  const hardRecallBar = document.createElement('div');
+  hardRecallBar.className = 'hud__hard-bar';
+  const hardRecallBarFill = document.createElement('div');
+  hardRecallBarFill.className = 'hud__hard-bar-fill hud__hard-bar-fill--final';
+  hardRecallBar.appendChild(hardRecallBarFill);
+  hardRecallForm.appendChild(hardRecallBar);
+
+  const hardRecallRow = document.createElement('div');
+  hardRecallRow.className = 'hud__hard-final-row';
+  hardRecallForm.appendChild(hardRecallRow);
+
+  hud.appendChild(hardRecallForm);
+
+  // Part 2: solve. The equation now shows what they just typed (right
+  // or wrong) with the operators, and they have to work out and type
+  // the result themselves — that's the actual launch, still timed.
+  const hardSolveForm = document.createElement('form');
+  hardSolveForm.className = 'hud__hard-final-form';
+  hardSolveForm.hidden = true;
+
+  const hardSolveBar = document.createElement('div');
+  hardSolveBar.className = 'hud__hard-bar';
+  const hardSolveBarFill = document.createElement('div');
+  hardSolveBarFill.className = 'hud__hard-bar-fill hud__hard-bar-fill--final';
+  hardSolveBar.appendChild(hardSolveBarFill);
+  hardSolveForm.appendChild(hardSolveBar);
+
+  const hardSolveRow = document.createElement('div');
+  hardSolveRow.className = 'hud__hard-final-row';
+  hardSolveForm.appendChild(hardSolveRow);
+
+  hud.appendChild(hardSolveForm);
+
   const roundOver = document.createElement('div');
   roundOver.className = 'hud__round-over';
   roundOver.hidden = true;
@@ -141,9 +183,18 @@ export function mountHud(root, game) {
   let answerInput = null;
   let shakeTimeoutId = null;
   let advanceTimeoutId = null;
-  let lastLoss = null;
+  let lastLossDetail = ''; // text shown on the "Out of tries" overlay — set by whichever path actually lost the round
   let hardAnswerInput = null;
   let hardLockInTimeoutId = null;
+  let hardRecallInputs = [];
+  let hardSolveAnswerInput = null;
+  let hardJustFailed = false; // true right after a mini-equation failure, until the retry's step 0 renders
+
+  // Whichever panel is currently "launchable" — the normal equation
+  // panel, or hard mode's final equation — hit/miss/tries/feedback all
+  // operate generically over these rather than a single hardcoded input.
+  let activeInputs = [];
+  let activeLaunchButton = launchButton;
 
   function renderEquation(equation) {
     equationEl.replaceChildren();
@@ -168,6 +219,9 @@ export function mountHud(root, game) {
     eq.textContent = '=';
     equationEl.appendChild(eq);
     appendEquationTokens(equationEl, equation.rhs, answerInput);
+
+    activeInputs = [answerInput];
+    activeLaunchButton = launchButton;
 
     answerInput.focus();
   }
@@ -217,9 +271,10 @@ export function mountHud(root, game) {
     hardAnswerInput.focus();
   }
 
-  function showHardLockedIn(message = 'Locked in') {
+  function showHardLockedIn(message = 'Locked in', variant = 'neutral') {
     hardForm.hidden = true;
     hardLockedIn.textContent = message;
+    hardLockedIn.className = `hud__hard-locked-in hud__hard-locked-in--${variant}`;
     hardLockedIn.hidden = false;
   }
 
@@ -231,27 +286,208 @@ export function mountHud(root, game) {
   }
 
   function handleHardStep(payload) {
-    if (payload.index === 0) {
+    if (payload.index === 0 && !hardJustFailed) {
       renderHardStep(payload);
       return;
     }
-    // A brief neutral pause between steps — no correctness hint either way.
-    showHardLockedIn();
+    // Either the normal step-to-step pause, or (if hardJustFailed) this
+    // is the retry's first equation — the "Not quite" message from
+    // handleHardMiniMiss is already showing, so just hold it a beat
+    // longer rather than stepping on it with the neutral one.
+    if (!hardJustFailed) showHardLockedIn();
+    hardJustFailed = false;
     clearTimeout(hardLockInTimeoutId);
     hardLockInTimeoutId = setTimeout(() => renderHardStep(payload), LOCK_IN_DURATION);
   }
 
-  function handleHardComplete({ timeLeftTotal }) {
-    // Session 10.1 picks up here to build and show the final equation;
-    // for now, park in a neutral state and log what was recorded so the
-    // sequence itself is verifiable end to end.
-    console.log('[hard mode] sequence complete — timeLeftTotal:', timeLeftTotal);
-    showHardLockedIn();
+  function handleHardMiniMiss({ triesRemaining, badge }) {
+    setPips(triesRemaining);
+    hardJustFailed = true;
+    clearTimeout(hardLockInTimeoutId);
+    showHardLockedIn('Not quite — try again', 'miss');
+
+    if (triesRemaining === 0) {
+      const symbol = BADGE_SYMBOLS[badge - 1] ?? badge;
+      lastLossDetail = `Equation ${symbol} tripped you up`;
+    }
+  }
+
+  // Restarts a countdown bar — called on first render of a phase, and
+  // again on a retry, so the clock always starts fresh at 100%.
+  function restartBar(fillEl, duration) {
+    fillEl.style.transition = 'none';
+    fillEl.style.width = '100%';
+    void fillEl.offsetWidth; // force reflow so the transition below restarts from 100%
+    fillEl.style.transition = `width ${duration}s linear`;
+    fillEl.style.width = '0%';
+  }
+
+  // Final phase, part 1: three blank inputs — badge/color only, no
+  // numbers shown. The player has to type back what they remember;
+  // nothing here is checked, whatever they submit becomes their own
+  // equation for the solve step.
+  function renderHardRecall({ ops, steps, duration }) {
+    hardRecallRow.replaceChildren();
+    hardRecallInputs = [];
+
+    steps.forEach((step, i) => {
+      const badge = document.createElement('span');
+      badge.className = `hud__hard-badge hud__hard-badge--${step.color}`;
+      badge.textContent = BADGE_SYMBOLS[step.badge - 1] ?? String(step.badge);
+      hardRecallRow.appendChild(badge);
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = 'numeric';
+      input.pattern = '[0-9]*';
+      input.autocomplete = 'off';
+      input.size = 2;
+      input.className = `hud__answer hud__hard-final-input hud__hard-final-input--${step.color}`;
+      input.addEventListener('input', () => game.setHardRecallPendingValue(i, input.value));
+      hardRecallRow.appendChild(input);
+      hardRecallInputs.push(input);
+
+      if (i < steps.length - 1) {
+        const opSpan = document.createElement('span');
+        opSpan.className = 'hud__token';
+        opSpan.textContent = ops[i];
+        hardRecallRow.appendChild(opSpan);
+      }
+    });
+
+    hardRecallInputs.forEach((input, i) => {
+      input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (i < hardRecallInputs.length - 1) hardRecallInputs[i + 1].focus();
+        else hardRecallForm.requestSubmit();
+      });
+    });
+
+    const submitButton = document.createElement('button');
+    submitButton.type = 'submit';
+    submitButton.className = 'hud__launch';
+    submitButton.textContent = 'Remember';
+    hardRecallRow.appendChild(submitButton);
+
+    restartBar(hardRecallBarFill, duration);
+
+    hardSolveForm.hidden = true;
+    hardRecallForm.hidden = false;
+    hardRecallInputs[0].focus();
+  }
+
+  function handleHardRecallSubmit(event) {
+    event.preventDefault();
+    if (hardRecallInputs.some((el) => el.disabled)) return;
+
+    const values = hardRecallInputs.map((el) => el.value.trim());
+    if (values.some((value) => value === '')) return;
+
+    game.submitHardRecall(values);
+  }
+
+  // Final phase, part 2: the equation with their recalled numbers
+  // plugged in (right or wrong) — they have to actually work it out and
+  // type the result. This is the real, launchable step.
+  function renderHardSolve({ values, ops, steps, duration }) {
+    hardSolveRow.replaceChildren();
+
+    steps.forEach((step, i) => {
+      const badge = document.createElement('span');
+      badge.className = `hud__hard-badge hud__hard-badge--${step.color}`;
+      badge.textContent = BADGE_SYMBOLS[step.badge - 1] ?? String(step.badge);
+      hardSolveRow.appendChild(badge);
+
+      const value = document.createElement('span');
+      value.className = `hud__token hud__hard-final-value hud__hard-final-value--${step.color}`;
+      value.textContent = String(values[i]);
+      hardSolveRow.appendChild(value);
+
+      if (i < steps.length - 1) {
+        const opSpan = document.createElement('span');
+        opSpan.className = 'hud__token';
+        opSpan.textContent = ops[i];
+        hardSolveRow.appendChild(opSpan);
+      }
+    });
+
+    const eq = document.createElement('span');
+    eq.className = 'hud__token';
+    eq.textContent = '=';
+    hardSolveRow.appendChild(eq);
+
+    hardSolveAnswerInput = document.createElement('input');
+    hardSolveAnswerInput.type = 'text';
+    hardSolveAnswerInput.inputMode = 'numeric';
+    hardSolveAnswerInput.pattern = '[0-9]*';
+    hardSolveAnswerInput.autocomplete = 'off';
+    hardSolveAnswerInput.size = 3;
+    hardSolveAnswerInput.className = 'hud__answer';
+    hardSolveAnswerInput.addEventListener('input', () => game.setHardSolvePendingValue(hardSolveAnswerInput.value));
+    hardSolveAnswerInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') hardSolveForm.requestSubmit();
+    });
+    hardSolveRow.appendChild(hardSolveAnswerInput);
+
+    const launchBtn = document.createElement('button');
+    launchBtn.type = 'submit';
+    launchBtn.className = 'hud__launch';
+    launchBtn.textContent = 'Launch';
+    hardSolveRow.appendChild(launchBtn);
+
+    activeInputs = [hardSolveAnswerInput];
+    activeLaunchButton = launchBtn;
+
+    restartBar(hardSolveBarFill, duration);
+
+    hardRecallForm.hidden = true;
+    hardSolveForm.hidden = false;
+    hardSolveAnswerInput.focus();
+  }
+
+  function handleHardSolveSubmit(event) {
+    event.preventDefault();
+    if (!hardSolveAnswerInput || hardSolveAnswerInput.disabled) return;
+
+    const value = hardSolveAnswerInput.value.trim();
+    if (value === '') return;
+
+    hideFeedback();
+    setInputEnabled(false);
+    game.submitHardFinal(value);
+  }
+
+  function handleHardSequenceComplete(payload) {
+    // The full recorded sequence — never shown on screen, but this is
+    // exactly the "console shows the recorded answers" verification the
+    // plan asks for. hard:recall (fired right after this by
+    // GameController) is what actually renders anything.
+    console.log('[hard mode] sequence complete —', payload);
+  }
+
+  function handleHardRecall(payload) {
+    if (isDebugEnabled()) {
+      targetReadout.textContent = `Target: marker ${payload.targetMarker}`;
+      targetReadout.hidden = false;
+    }
+
+    // The mini-equations panel is only ever visible the first time
+    // through — a retry (after a solve miss) starts from here directly,
+    // so there's nothing to pause on besides the miss feedback already
+    // showing (see handleMiss).
+    const isFirstEntry = !hardPanel.hidden;
+    if (isFirstEntry) showHardLockedIn();
     clearTimeout(hardLockInTimeoutId);
     hardLockInTimeoutId = setTimeout(() => {
-      hardBar.hidden = true;
-      showHardLockedIn('All three memorized — final equation coming soon.');
+      hardPanel.hidden = true;
+      pipsRow.hidden = false;
+      renderHardRecall(payload);
     }, LOCK_IN_DURATION);
+  }
+
+  function handleHardSolve(payload) {
+    renderHardSolve(payload);
   }
 
   function handleHardSubmit(event) {
@@ -276,19 +512,34 @@ export function mountHud(root, game) {
     feedback.hidden = true;
   }
 
+  // Generic over whichever panel is currently launchable — the normal
+  // single equation, or hard mode's three-input final equation.
   function setInputEnabled(enabled) {
-    if (answerInput) answerInput.disabled = !enabled;
-    launchButton.disabled = !enabled;
+    for (const input of activeInputs) input.disabled = !enabled;
+    activeLaunchButton.disabled = !enabled;
   }
 
-  function shakeInput() {
-    if (!answerInput) return;
+  function clearActiveInputs() {
+    for (const input of activeInputs) input.value = '';
+  }
+
+  function focusFirstActiveInput() {
+    activeInputs[0]?.focus();
+  }
+
+  function shakeActiveInputs() {
     clearTimeout(shakeTimeoutId);
-    answerInput.classList.remove('hud__answer--shake');
+    for (const input of activeInputs) {
+      input.classList.remove('hud__answer--shake');
+    }
     // Force reflow so re-adding the class restarts the animation on repeat misses.
-    void answerInput.offsetWidth;
-    answerInput.classList.add('hud__answer--shake');
-    shakeTimeoutId = setTimeout(() => answerInput?.classList.remove('hud__answer--shake'), SHAKE_DURATION);
+    if (activeInputs[0]) void activeInputs[0].offsetWidth;
+    for (const input of activeInputs) {
+      input.classList.add('hud__answer--shake');
+    }
+    shakeTimeoutId = setTimeout(() => {
+      for (const input of activeInputs) input.classList.remove('hud__answer--shake');
+    }, SHAKE_DURATION);
   }
 
   function handleSubmit(event) {
@@ -308,21 +559,29 @@ export function mountHud(root, game) {
     status.textContent = `Round ${round} / ${totalRounds} · Score: ${score}`;
     hideFeedback();
     roundOver.hidden = true;
+    lastLossDetail = '';
 
     if (difficulty === 'hard') {
       // Hard mode's memorization phase has no tries/target/launch yet —
-      // those only apply once session 10.1 adds the final equation.
+      // those only apply once the final phase starts, after
+      // hard:sequenceComplete.
       pipsRow.hidden = true;
       targetReadout.hidden = true;
       form.hidden = true;
+      hardRecallForm.hidden = true;
+      hardSolveForm.hidden = true;
       hardPanel.hidden = false;
+      hardJustFailed = false;
       resetHardPanel();
+      setPips(triesRemaining); // pre-set so it's already correct once pipsRow reappears
       return;
     }
 
     pipsRow.hidden = false;
     form.hidden = false;
     hardPanel.hidden = true;
+    hardRecallForm.hidden = true;
+    hardSolveForm.hidden = true;
     if (isDebugEnabled()) {
       targetReadout.textContent = `Target: marker ${targetMarker}`;
       targetReadout.hidden = false;
@@ -352,22 +611,23 @@ export function mountHud(root, game) {
     const revealTarget = triesRemaining === 0 || isDebugEnabled();
     const message = revealTarget ? `Landed at ${landedAt} — target was ${targetAt}` : `Landed at ${landedAt} — try again`;
     showFeedback(message, 'miss');
-    shakeInput();
-    if (answerInput) answerInput.value = '';
+    shakeActiveInputs();
+    clearActiveInputs();
     setInputEnabled(triesRemaining > 0);
-    if (triesRemaining > 0) answerInput?.focus();
+    if (triesRemaining > 0) focusFirstActiveInput();
+    // A hard-mode retry replays the whole recall+solve final phase —
+    // GameController emits hard:recall right after this, which renders
+    // fresh inputs and its own timer (see handleHardRecall).
 
     if (triesRemaining === 0) {
       // The "Out of tries" overlay covers the feedback line above, so
       // repeat the reveal there where it's actually legible.
-      lastLoss = { landedAt, targetAt };
+      lastLossDetail = `You landed at ${landedAt} — the target was at ${targetAt}`;
     }
   }
 
   function handleRoundLost() {
-    if (lastLoss) {
-      roundOverDetail.textContent = `You landed at ${lastLoss.landedAt} — the target was at ${lastLoss.targetAt}`;
-    }
+    roundOverDetail.textContent = lastLossDetail;
     setInputEnabled(false);
     roundOver.hidden = false;
   }
@@ -379,6 +639,8 @@ export function mountHud(root, game) {
 
   form.addEventListener('submit', handleSubmit);
   hardForm.addEventListener('submit', handleHardSubmit);
+  hardRecallForm.addEventListener('submit', handleHardRecallSubmit);
+  hardSolveForm.addEventListener('submit', handleHardSolveSubmit);
   continueButton.addEventListener('click', handleContinue);
 
   const unsubscribers = [
@@ -388,7 +650,10 @@ export function mountHud(root, game) {
     game.on('try:miss', handleMiss),
     game.on('round:lost', handleRoundLost),
     game.on('hard:step', handleHardStep),
-    game.on('hard:sequenceComplete', handleHardComplete),
+    game.on('hard:miniMiss', handleHardMiniMiss),
+    game.on('hard:sequenceComplete', handleHardSequenceComplete),
+    game.on('hard:recall', handleHardRecall),
+    game.on('hard:solve', handleHardSolve),
   ];
 
   function unmount() {
@@ -397,6 +662,8 @@ export function mountHud(root, game) {
     clearTimeout(hardLockInTimeoutId);
     form.removeEventListener('submit', handleSubmit);
     hardForm.removeEventListener('submit', handleHardSubmit);
+    hardRecallForm.removeEventListener('submit', handleHardRecallSubmit);
+    hardSolveForm.removeEventListener('submit', handleHardSolveSubmit);
     continueButton.removeEventListener('click', handleContinue);
     for (const off of unsubscribers) off();
     hud.remove();
