@@ -4,13 +4,7 @@ import { mountIdleScene } from '../idleScene.js';
 const DIFFICULTIES = [
   { id: 'easy', label: 'Easy', description: 'Direct arithmetic — 7 + 5 = ▢.' },
   { id: 'medium', label: 'Medium', description: 'Solve for x — x + 3 = 15.' },
-  {
-    id: 'hard',
-    label: 'Hard',
-    description: 'Memorize three timed equations, then combine them.',
-    disabled: true,
-    disabledNote: 'Coming soon',
-  },
+  { id: 'hard', label: 'Hard', description: 'Memorize three timed equations, then combine them.' },
 ];
 
 let unmountIdle = null;

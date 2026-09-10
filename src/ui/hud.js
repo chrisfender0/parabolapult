@@ -8,6 +8,25 @@ import { isDebugEnabled } from '../core/debugHooks.js';
 const MAX_TRIES = 3;
 const HIT_ADVANCE_DELAY = 1400; // ms the success banner stays up before the next round starts
 const SHAKE_DURATION = 400; // ms, must match the CSS animation below
+const BADGE_SYMBOLS = ['①', '②', '③'];
+const LOCK_IN_DURATION = 550; // ms the neutral "Locked in" transition holds between hard-mode steps
+
+// Builds the token spans (and places the given blank element where the
+// equation's blank token sits) for either the main equation panel or a
+// hard-mode step — both render the same { lhs, rhs } token shape from
+// src/math/equations.js.
+function appendEquationTokens(container, tokens, blankEl) {
+  for (const token of tokens) {
+    if (token.type === 'blank') {
+      container.appendChild(blankEl);
+    } else {
+      const span = document.createElement('span');
+      span.className = 'hud__token';
+      span.textContent = String(token.value);
+      container.appendChild(span);
+    }
+  }
+}
 
 /**
  * @param {HTMLElement} root
@@ -60,6 +79,46 @@ export function mountHud(root, game) {
 
   hud.appendChild(form);
 
+  // Hard mode's timed memorization panel — a completely separate flow
+  // from the equation panel above (no tries, no launch, no feedback).
+  const hardPanel = document.createElement('div');
+  hardPanel.className = 'hud__hard-panel';
+  hardPanel.hidden = true;
+
+  const hardBar = document.createElement('div');
+  hardBar.className = 'hud__hard-bar';
+  const hardBarFill = document.createElement('div');
+  hardBarFill.className = 'hud__hard-bar-fill';
+  hardBar.appendChild(hardBarFill);
+  hardPanel.appendChild(hardBar);
+
+  const hardForm = document.createElement('form');
+  hardForm.className = 'hud__hard-form';
+
+  const hardBadge = document.createElement('span');
+  hardBadge.className = 'hud__hard-badge';
+  hardForm.appendChild(hardBadge);
+
+  const hardEquationEl = document.createElement('div');
+  hardEquationEl.className = 'hud__equation';
+  hardForm.appendChild(hardEquationEl);
+
+  const hardLockButton = document.createElement('button');
+  hardLockButton.type = 'submit';
+  hardLockButton.className = 'hud__launch';
+  hardLockButton.textContent = 'Lock In';
+  hardForm.appendChild(hardLockButton);
+
+  hardPanel.appendChild(hardForm);
+
+  const hardLockedIn = document.createElement('div');
+  hardLockedIn.className = 'hud__hard-locked-in';
+  hardLockedIn.textContent = 'Locked in';
+  hardLockedIn.hidden = true;
+  hardPanel.appendChild(hardLockedIn);
+
+  hud.appendChild(hardPanel);
+
   const roundOver = document.createElement('div');
   roundOver.className = 'hud__round-over';
   roundOver.hidden = true;
@@ -83,6 +142,8 @@ export function mountHud(root, game) {
   let shakeTimeoutId = null;
   let advanceTimeoutId = null;
   let lastLoss = null;
+  let hardAnswerInput = null;
+  let hardLockInTimeoutId = null;
 
   function renderEquation(equation) {
     equationEl.replaceChildren();
@@ -101,27 +162,102 @@ export function mountHud(root, game) {
       if (event.key === 'Enter') form.requestSubmit();
     });
 
-    const appendTokens = (tokens) => {
-      for (const token of tokens) {
-        if (token.type === 'blank') {
-          equationEl.appendChild(answerInput);
-        } else {
-          const span = document.createElement('span');
-          span.className = 'hud__token';
-          span.textContent = String(token.value);
-          equationEl.appendChild(span);
-        }
-      }
-    };
-
-    appendTokens(equation.lhs);
+    appendEquationTokens(equationEl, equation.lhs, answerInput);
     const eq = document.createElement('span');
     eq.className = 'hud__token';
     eq.textContent = '=';
     equationEl.appendChild(eq);
-    appendTokens(equation.rhs);
+    appendEquationTokens(equationEl, equation.rhs, answerInput);
 
     answerInput.focus();
+  }
+
+  // Renders one hard-mode step immediately (equation, badge, colored
+  // border, and a freshly-started countdown bar). Called directly for
+  // the round's first step; every later step goes through the
+  // "Locked in" pause in handleHardStep first.
+  function renderHardStep({ badge, color, lhs, rhs, duration }) {
+    hardPanel.className = `hud__hard-panel hud__hard-panel--${color}`;
+    hardBadge.textContent = BADGE_SYMBOLS[badge - 1] ?? String(badge);
+    hardForm.hidden = false;
+    hardBar.hidden = false;
+    hardLockedIn.hidden = true;
+
+    hardEquationEl.replaceChildren();
+    hardAnswerInput = document.createElement('input');
+    hardAnswerInput.type = 'text';
+    hardAnswerInput.inputMode = 'numeric';
+    hardAnswerInput.pattern = '[0-9]*';
+    hardAnswerInput.autocomplete = 'off';
+    hardAnswerInput.size = 3;
+    hardAnswerInput.className = 'hud__answer';
+    // The countdown auto-submits whatever's typed when it hits 0, so the
+    // controller needs the live value, not just what's submitted on Enter.
+    hardAnswerInput.addEventListener('input', () => game.setHardPendingValue(hardAnswerInput.value));
+    hardAnswerInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') hardForm.requestSubmit();
+    });
+
+    appendEquationTokens(hardEquationEl, lhs, hardAnswerInput);
+    const eq = document.createElement('span');
+    eq.className = 'hud__token';
+    eq.textContent = '=';
+    hardEquationEl.appendChild(eq);
+    appendEquationTokens(hardEquationEl, rhs, hardAnswerInput);
+
+    // The bar's own dt-independent CSS transition is purely cosmetic —
+    // HardSequence.update(dt) is the actual timing authority (see
+    // game/HardSequence.js); this just needs to visually match its duration.
+    hardBarFill.style.transition = 'none';
+    hardBarFill.style.width = '100%';
+    void hardBarFill.offsetWidth; // force reflow so the transition below restarts from 100%
+    hardBarFill.style.transition = `width ${duration}s linear`;
+    hardBarFill.style.width = '0%';
+
+    hardAnswerInput.focus();
+  }
+
+  function showHardLockedIn(message = 'Locked in') {
+    hardForm.hidden = true;
+    hardLockedIn.textContent = message;
+    hardLockedIn.hidden = false;
+  }
+
+  function resetHardPanel() {
+    clearTimeout(hardLockInTimeoutId);
+    hardForm.hidden = false;
+    hardBar.hidden = false;
+    hardLockedIn.hidden = true;
+  }
+
+  function handleHardStep(payload) {
+    if (payload.index === 0) {
+      renderHardStep(payload);
+      return;
+    }
+    // A brief neutral pause between steps — no correctness hint either way.
+    showHardLockedIn();
+    clearTimeout(hardLockInTimeoutId);
+    hardLockInTimeoutId = setTimeout(() => renderHardStep(payload), LOCK_IN_DURATION);
+  }
+
+  function handleHardComplete({ timeLeftTotal }) {
+    // Session 10.1 picks up here to build and show the final equation;
+    // for now, park in a neutral state and log what was recorded so the
+    // sequence itself is verifiable end to end.
+    console.log('[hard mode] sequence complete — timeLeftTotal:', timeLeftTotal);
+    showHardLockedIn();
+    clearTimeout(hardLockInTimeoutId);
+    hardLockInTimeoutId = setTimeout(() => {
+      hardBar.hidden = true;
+      showHardLockedIn('All three memorized — final equation coming soon.');
+    }, LOCK_IN_DURATION);
+  }
+
+  function handleHardSubmit(event) {
+    event.preventDefault();
+    if (!hardAnswerInput) return;
+    game.submitHardStep(hardAnswerInput.value);
   }
 
   function setPips(triesRemaining) {
@@ -167,16 +303,31 @@ export function mountHud(root, game) {
     game.submit(value);
   }
 
-  function handleRoundBegin({ equation, targetMarker, triesRemaining, round, totalRounds, score }) {
+  function handleRoundBegin({ difficulty, equation, targetMarker, triesRemaining, round, totalRounds, score }) {
     clearTimeout(advanceTimeoutId);
     status.textContent = `Round ${round} / ${totalRounds} · Score: ${score}`;
+    hideFeedback();
+    roundOver.hidden = true;
+
+    if (difficulty === 'hard') {
+      // Hard mode's memorization phase has no tries/target/launch yet —
+      // those only apply once session 10.1 adds the final equation.
+      pipsRow.hidden = true;
+      targetReadout.hidden = true;
+      form.hidden = true;
+      hardPanel.hidden = false;
+      resetHardPanel();
+      return;
+    }
+
+    pipsRow.hidden = false;
+    form.hidden = false;
+    hardPanel.hidden = true;
     if (isDebugEnabled()) {
       targetReadout.textContent = `Target: marker ${targetMarker}`;
       targetReadout.hidden = false;
     }
     setPips(triesRemaining);
-    hideFeedback();
-    roundOver.hidden = true;
     renderEquation(equation);
     setInputEnabled(true);
   }
@@ -227,6 +378,7 @@ export function mountHud(root, game) {
   }
 
   form.addEventListener('submit', handleSubmit);
+  hardForm.addEventListener('submit', handleHardSubmit);
   continueButton.addEventListener('click', handleContinue);
 
   const unsubscribers = [
@@ -235,12 +387,16 @@ export function mountHud(root, game) {
     game.on('try:hit', handleHit),
     game.on('try:miss', handleMiss),
     game.on('round:lost', handleRoundLost),
+    game.on('hard:step', handleHardStep),
+    game.on('hard:sequenceComplete', handleHardComplete),
   ];
 
   function unmount() {
     clearTimeout(shakeTimeoutId);
     clearTimeout(advanceTimeoutId);
+    clearTimeout(hardLockInTimeoutId);
     form.removeEventListener('submit', handleSubmit);
+    hardForm.removeEventListener('submit', handleHardSubmit);
     continueButton.removeEventListener('click', handleContinue);
     for (const off of unsubscribers) off();
     hud.remove();

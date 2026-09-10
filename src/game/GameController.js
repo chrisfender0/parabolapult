@@ -5,12 +5,13 @@ import { makeTrajectory } from '../math/trajectory.js';
 import { resolveOutcome } from './flightOutcome.js';
 import { scoreRound } from './scoring.js';
 import { GameSession } from './GameSession.js';
+import { HardSequence } from './HardSequence.js';
 
 const MAX_TRIES = 3;
 export const ROUNDS_PER_GAME = 5;
 
-// 'hard' is intentionally absent — it needs the timed multi-equation flow
-// from sessions 10/10.1, not a single generator call.
+// 'hard' is intentionally absent — beginRound() branches to the timed
+// HardSequence for it instead of a single generator call.
 const GENERATORS = {
   easy: makeEasy,
   medium: makeMedium,
@@ -21,8 +22,12 @@ const GENERATORS = {
  * launch, resolve the outcome, spend a try, end the round. No UI — driven
  * entirely by method calls and Emitter events.
  *
- * Events: round:begin, try:hit, try:miss, round:scored, round:won,
- * round:lost, game:over.
+ * Hard mode instead runs a HardSequence first (three timed, memorized
+ * equations — see game/HardSequence.js); session 10.1 picks up from
+ * hard:sequenceComplete to build the final launchable equation.
+ *
+ * Events: round:begin, hard:step, hard:sequenceComplete, try:hit,
+ * try:miss, round:scored, round:won, round:lost, game:over.
  */
 export class GameController extends Emitter {
   constructor({ projectile, target, rng = createRng() }) {
@@ -36,6 +41,7 @@ export class GameController extends Emitter {
     this.targetMarker = null;
     this.flying = false;
     this.roundOver = false;
+    this.hardSequence = null;
 
     this.projectile.on('land', (payload) => this._handleLand(payload));
   }
@@ -50,6 +56,15 @@ export class GameController extends Emitter {
   beginRound() {
     if (!this.session) throw new Error('call start() before beginRound()');
 
+    this.session.round += 1;
+    this.session.triesRemaining = MAX_TRIES;
+    this.roundOver = false;
+
+    if (this.session.difficulty === 'hard') {
+      this._beginHardRound();
+      return;
+    }
+
     const generate = GENERATORS[this.session.difficulty];
     if (!generate) {
       throw new Error(`no equation generator for difficulty "${this.session.difficulty}"`);
@@ -59,11 +74,8 @@ export class GameController extends Emitter {
     this.targetMarker = this.equation.answer;
     this.target.setMarker(this.targetMarker);
 
-    this.session.round += 1;
-    this.session.triesRemaining = MAX_TRIES;
-    this.roundOver = false;
-
     this.emit('round:begin', {
+      difficulty: this.session.difficulty,
       equation: this.equation,
       targetMarker: this.targetMarker,
       round: this.session.round,
@@ -73,8 +85,43 @@ export class GameController extends Emitter {
     });
   }
 
+  // Starts the timed memorization sequence instead of a single equation.
+  // The world stays idle — nothing launches until session 10.1's final
+  // equation (built from hard:sequenceComplete's recorded answers) sets
+  // a target and takes over submit().
+  _beginHardRound() {
+    this.emit('round:begin', {
+      difficulty: 'hard',
+      round: this.session.round,
+      totalRounds: ROUNDS_PER_GAME,
+      triesRemaining: this.session.triesRemaining,
+      score: this.session.score,
+    });
+
+    this.hardSequence = new HardSequence(this.rng);
+    this.hardSequence.on('hard:step', (payload) => this.emit('hard:step', payload));
+    this.hardSequence.on('hard:sequenceComplete', (payload) => this.emit('hard:sequenceComplete', payload));
+    this.hardSequence.start();
+  }
+
+  /** Ticked every frame by the screen while a hard round's sequence is running. */
+  updateHard(dt) {
+    this.hardSequence?.update(dt);
+  }
+
+  /** HUD calls this on every keystroke during a hard step, so a timeout has something to submit. */
+  setHardPendingValue(value) {
+    this.hardSequence?.setPendingValue(value);
+  }
+
+  /** HUD calls this when the player answers a hard step before its timer runs out. */
+  submitHardStep(value) {
+    this.hardSequence?.submit(value);
+  }
+
   submit(input) {
     if (!this.session || this.roundOver || this.flying) return;
+    if (this.session.difficulty === 'hard') return; // hard mode answers via submitHardStep()
 
     const { parsed } = checkAnswer(this.equation, input);
     if (parsed === null) return; // not a number — nothing to launch

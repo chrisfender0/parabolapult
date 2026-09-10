@@ -73,6 +73,10 @@ body {
   letter-spacing: 0.02em;
 }
 
+.hud__pips[hidden] {
+  display: none;
+}
+
 .hud__pips {
   display: flex;
   gap: 0.5rem;
@@ -106,6 +110,10 @@ body {
 
 .hud__feedback--miss {
   color: var(--color-crash);
+}
+
+.hud__equation-panel[hidden] {
+  display: none;
 }
 
 .hud__equation-panel {
@@ -186,6 +194,99 @@ body {
 .hud__launch:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Hard mode — timed memorization panel */
+
+.hud__hard-panel[hidden] {
+  display: none;
+}
+
+.hud__hard-panel {
+  width: 100%;
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 3px solid var(--color-grid-line);
+  background: rgba(10, 20, 32, 0.4);
+  transition: border-color 0.2s ease;
+}
+
+.hud__hard-panel--hard-1 {
+  border-color: var(--color-hard-1);
+}
+
+.hud__hard-panel--hard-2 {
+  border-color: var(--color-hard-2);
+}
+
+.hud__hard-panel--hard-3 {
+  border-color: var(--color-hard-3);
+}
+
+.hud__hard-bar {
+  width: 100%;
+  height: 0.3rem;
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.hud__hard-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: currentColor;
+  color: inherit;
+}
+
+.hud__hard-panel--hard-1 .hud__hard-bar-fill {
+  background: var(--color-hard-1);
+}
+
+.hud__hard-panel--hard-2 .hud__hard-bar-fill {
+  background: var(--color-hard-2);
+}
+
+.hud__hard-panel--hard-3 .hud__hard-bar-fill {
+  background: var(--color-hard-3);
+}
+
+.hud__hard-form[hidden] {
+  display: none;
+}
+
+.hud__hard-form {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hud__hard-badge {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.hud__hard-panel--hard-1 .hud__hard-badge {
+  color: var(--color-hard-1);
+}
+
+.hud__hard-panel--hard-2 .hud__hard-badge {
+  color: var(--color-hard-2);
+}
+
+.hud__hard-panel--hard-3 .hud__hard-badge {
+  color: var(--color-hard-3);
+}
+
+.hud__hard-locked-in {
+  text-align: center;
+  padding: 0.5rem 0;
+  font-weight: 600;
+  color: var(--color-ink);
+  opacity: 0.8;
 }
 
 .hud__round-over[hidden] {

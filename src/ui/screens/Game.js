@@ -64,6 +64,7 @@ export function mount(root, ctx) {
     projectile.update(dt);
     effects.update(dt);
     cameraShake.update(dt);
+    game.updateHard(dt);
   });
 
   const hud = mountHud(root, game);
