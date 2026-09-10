@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { worldXForMarker, makeLabel } from './ruler.js';
+import { isDebugEnabled } from '../core/debugHooks.js';
 
 // Open-topped container: floor + two side walls, no lid, plus a soft glow
 // disc and a number label that both update when setMarker moves it.
@@ -17,6 +18,10 @@ const WALL_THICKNESS = 0.12;
 export function createTarget() {
   const group = new THREE.Group();
   group.name = 'target';
+  // Hidden until a shot lands (reveal()) — its position is the equation's
+  // answer, so showing it up front would let the player skip solving.
+  // Debug mode leaves it visible throughout for testing.
+  group.visible = isDebugEnabled();
 
   // Soft glow so the container reads as "a place things land" even before
   // the number label is legible.
@@ -60,11 +65,28 @@ export function createTarget() {
       group.remove(label);
       label.material.map.dispose();
       label.material.dispose();
+      label = null;
     }
-    label = makeLabel(String(n), { color: LABEL_COLOR });
-    label.position.set(0, FLOOR_THICKNESS + WALL_HEIGHT + 1.3, 0.1);
-    group.add(label);
+
+    // The player is meant to read the target's position off the ruler
+    // themselves — a floating number handing over the answer only shows
+    // up in debug mode (see core/debugHooks.js).
+    if (isDebugEnabled()) {
+      label = makeLabel(String(n), { color: LABEL_COLOR });
+      label.position.set(0, FLOOR_THICKNESS + WALL_HEIGHT + 1.3, 0.1);
+      group.add(label);
+    }
   }
 
-  return { group, setMarker };
+  /** Shows the container — call once a shot has landed (hit or miss). */
+  function reveal() {
+    group.visible = true;
+  }
+
+  /** Hides the container again for a fresh, unsolved round. No-op in debug mode. */
+  function hide() {
+    group.visible = isDebugEnabled();
+  }
+
+  return { group, setMarker, reveal, hide };
 }

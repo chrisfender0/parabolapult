@@ -3,6 +3,8 @@
 // GameController events. No game logic lives here; this only renders
 // state and forwards player input via game.submit()/game.nextRound().
 
+import { isDebugEnabled } from '../core/debugHooks.js';
+
 const MAX_TRIES = 3;
 const HIT_ADVANCE_DELAY = 1400; // ms the success banner stays up before the next round starts
 const SHAKE_DURATION = 400; // ms, must match the CSS animation below
@@ -16,8 +18,12 @@ export function mountHud(root, game) {
   const hud = document.createElement('div');
   hud.className = 'hud';
 
+  // The target's position is something the player reads off the ruler
+  // themselves — this readout only appears in debug mode (see
+  // core/debugHooks.js), otherwise it would just hand over the answer.
   const targetReadout = document.createElement('div');
   targetReadout.className = 'hud__target';
+  targetReadout.hidden = true;
   hud.appendChild(targetReadout);
 
   const pipsRow = document.createElement('div');
@@ -154,7 +160,10 @@ export function mountHud(root, game) {
 
   function handleRoundBegin({ equation, targetMarker, triesRemaining }) {
     clearTimeout(advanceTimeoutId);
-    targetReadout.textContent = `Target: marker ${targetMarker}`;
+    if (isDebugEnabled()) {
+      targetReadout.textContent = `Target: marker ${targetMarker}`;
+      targetReadout.hidden = false;
+    }
     setPips(triesRemaining);
     hideFeedback();
     roundOver.hidden = true;

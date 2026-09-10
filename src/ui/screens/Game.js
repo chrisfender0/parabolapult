@@ -38,12 +38,20 @@ export function mount(root, ctx) {
 
   const game = new GameController({ projectile, target });
 
+  // The target stays hidden until a shot lands — its position is the
+  // equation's answer, so showing it up front would let the player skip
+  // solving. It reappears once revealed (hit or miss) and stays visible
+  // through any retries in that round; a fresh round hides it again.
+  game.on('round:begin', () => target.hide());
+
   game.on('try:hit', () => {
+    target.reveal();
     effects.add(pulseGroup(target.group, { color: HIT_COLOR }));
     effects.add(dropIntoContainer(projectile.mesh));
   });
 
   game.on('try:miss', ({ landedAt }) => {
+    target.reveal();
     cameraShake.trigger(0.85);
     effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
     effects.add(createGroundFlash(scene, worldXForMarker(landedAt), CRASH_COLOR));

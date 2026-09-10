@@ -15,10 +15,9 @@ export function buildWorld(scene) {
   scene.add(launcherGroup);
   const launcher = { group: launcherGroup, muzzle };
 
-  const { group: targetGroup, setMarker } = createTarget();
-  scene.add(targetGroup);
-  setMarker(DEFAULT_TARGET_MARKER);
-  const target = { group: targetGroup, setMarker };
+  const target = createTarget();
+  scene.add(target.group);
+  target.setMarker(DEFAULT_TARGET_MARKER);
 
   return { ruler, launcher, target };
 }

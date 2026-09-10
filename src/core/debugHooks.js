@@ -1,10 +1,13 @@
-// Dev/console hooks (window.__game, window.projectile, ...) are only
-// attached when explicitly enabled — otherwise they'd sit exposed on
-// every page load, including the deployed build. Toggle from the
-// console with __enableDebug() / __disableDebug(), then reload.
+// Dev/testing aids — console hooks (window.__game, window.projectile, ...)
+// and the target's marker number (the HUD readout + the floating label
+// above the container, both of which hand over the round's answer) — are
+// only active when explicitly enabled. The player is meant to read the
+// target's position off the ruler themselves; a visible number defeats
+// that. Toggle from the console with __enableDebug() / __disableDebug(),
+// then reload.
 const FLAG_KEY = 'parabolapult:debug';
 
-function isDebugEnabled() {
+export function isDebugEnabled() {
   try {
     return localStorage.getItem(FLAG_KEY) === '1';
   } catch {
@@ -24,7 +27,7 @@ window.__enableDebug = function __enableDebug() {
   } catch {
     // Ignore — non-critical.
   }
-  console.log('[debug] enabled — reload the page to expose window.__game / projectile / target');
+  console.log('[debug] enabled — reload the page to expose window.__game / projectile / target and reveal the target marker number');
 };
 
 window.__disableDebug = function __disableDebug() {
