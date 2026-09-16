@@ -9,6 +9,13 @@ function formatDate(iso) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Old entries have no `mode` field — treated as Classic, matching how the
+// rest of the game (GameSession, scoring) falls back when it's absent.
+function formatModeLabel(entry) {
+  const label = entry.difficulty.charAt(0).toUpperCase() + entry.difficulty.slice(1);
+  return entry.mode === 'parabolic' ? `Parabolic · ${label}` : label;
+}
+
 function renderLeaderboard(container) {
   const entries = getEntries().slice(0, 10);
 
@@ -40,7 +47,7 @@ function renderLeaderboard(container) {
     row.appendChild(score);
 
     const difficulty = document.createElement('td');
-    difficulty.textContent = entry.difficulty;
+    difficulty.textContent = formatModeLabel(entry);
     row.appendChild(difficulty);
 
     const date = document.createElement('td');

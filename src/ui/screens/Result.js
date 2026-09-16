@@ -81,6 +81,32 @@ function renderHardBreakdownCell(hard) {
   return wrap;
 }
 
+// Parabolic's reveal, parallel to renderHardBreakdownCell's but for a
+// single typed expression: what the player last typed, whether it counted
+// as a hit (round.outcome already answers that — never re-derived by
+// string-comparing against the solution, since multiple typed forms can be
+// algebraically equivalent, see plan/13-parabolic-engine.md), and the
+// canonical solution for comparison.
+function renderParabolicBreakdownCell(parabolic, outcome) {
+  const wrap = document.createElement('span');
+  wrap.className = 'result__hard-cell';
+
+  const you = document.createElement('span');
+  you.textContent = `you: ${parabolic.typed ?? '—'}`;
+  wrap.appendChild(you);
+
+  const icon = document.createElement('span');
+  icon.className = `result__parabolic-icon result__parabolic-icon--${outcome}`;
+  icon.textContent = outcome === 'hit' ? '✓' : '✗';
+  wrap.appendChild(icon);
+
+  const solution = document.createElement('span');
+  solution.textContent = parabolic.solution;
+  wrap.appendChild(solution);
+
+  return wrap;
+}
+
 function renderBreakdown(container, rounds) {
   const table = document.createElement('table');
   table.className = 'result__table';
@@ -101,6 +127,8 @@ function renderBreakdown(container, rounds) {
     const equationCell = document.createElement('td');
     if (round.hard) {
       equationCell.appendChild(renderHardBreakdownCell(round.hard));
+    } else if (round.parabolic) {
+      equationCell.appendChild(renderParabolicBreakdownCell(round.parabolic, round.outcome));
     } else {
       equationCell.textContent = round.equation;
     }
@@ -135,6 +163,7 @@ export function mount(root, ctx) {
     name: session.playerName,
     score: session.score,
     difficulty: session.difficulty,
+    mode: session.mode,
     date: new Date().toISOString(),
     rounds: session.rounds.length,
   };

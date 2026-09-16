@@ -19,6 +19,25 @@ Built with three.js + Vite. Live at https://chrisfender0.github.io/parabolapult/
 Three tries per round, five rounds per game, score is written to a local
 leaderboard (no backend — everything lives in `localStorage`).
 
+## Modes
+
+- **Classic** — the difficulties above: type a number, that number is the
+  landing distance.
+- **Parabolic** — instead of a number, you build one linear piece (`ax + b`)
+  into a blank inside a parabola template, using an on-screen keypad:
+  - Easy (factored): `y = x · ( ▢ )`
+  - Medium (standard): `y = −x² + ▢`
+  - Hard (vertex): `y = −( ▢ )² + c`
+
+  Whatever equation you end up with, the projectile lands wherever that
+  parabola's other root is — get the template right and its root lands
+  exactly on the target; get it wrong and it dives, orbits off the top of
+  the screen, fizzles on the pad, overshoots the ruler, or arcs to the
+  wrong spot, depending on what you actually built.
+
+Pick a mode on the Setup screen before choosing a difficulty; the last mode
+you played is remembered for next time.
+
 ## Development
 
 ```
@@ -49,7 +68,7 @@ deployed if that base path is ever removed or changed.
 
 ## Status
 
-Feature-complete through session 12 (testing/release). The build was done
+Feature-complete through session 13.1 (Parabolic mode). The build was done
 one session at a time — see [`plan/`](plan/), starting with
 [`plan/00-PLAN.md`](plan/00-PLAN.md), for the session-per-file breakdown
 and the reasoning behind each one. [`docs/TEST-CHECKLIST.md`](docs/TEST-CHECKLIST.md)

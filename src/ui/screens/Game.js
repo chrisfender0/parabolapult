@@ -31,7 +31,7 @@ let cleanup = null;
  * @param {{ scene, camera, world, addUpdater, difficulty, playerName, slowMo }} ctx
  */
 export function mount(root, ctx) {
-  const { scene, camera, world, addUpdater, difficulty, playerName, slowMo } = ctx;
+  const { scene, camera, world, addUpdater, difficulty, playerName, mode, slowMo } = ctx;
   const { launcher, target } = world;
 
   const projectile = new Projectile(launcher.muzzle);
@@ -75,7 +75,7 @@ export function mount(root, ctx) {
     spawnScorePopup(lastPoints);
   });
 
-  game.on('try:miss', ({ landedAt, triesRemaining }) => {
+  game.on('try:miss', ({ landedAt, triesRemaining, flightKind }) => {
     // Revealing the container on every miss would hand over the answer
     // for the retries still left in the round — only show it once the
     // round is actually over (out of tries), matching the HUD's own
@@ -84,11 +84,18 @@ export function mount(root, ctx) {
     cameraRig.settle();
     cameraRig.trigger(0.85);
     sfx.playCrash();
-    const landedWorldX = worldXForMarker(landedAt);
-    effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
-    effects.add(createGroundFlash(scene, landedWorldX, CRASH_COLOR));
-    effects.add(createDustPuff(scene, projectile.mesh.position.clone(), CRASH_COLOR));
-    effects.add(createScorchMark(scene, landedWorldX));
+
+    // Orbit never comes down (landedAt is null) and overshoot flies off
+    // the edge of the ruler — neither has a real ground impact to show
+    // particles/flash/scorch at. Every other kind (classic misses, plus
+    // Parabolic's dive/fizzle/arc) crashes at a real point in world space.
+    if (landedAt !== null && flightKind !== 'orbit' && flightKind !== 'overshoot') {
+      const landedWorldX = worldXForMarker(landedAt);
+      effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
+      effects.add(createGroundFlash(scene, landedWorldX, CRASH_COLOR));
+      effects.add(createDustPuff(scene, projectile.mesh.position.clone(), CRASH_COLOR));
+      effects.add(createScorchMark(scene, landedWorldX));
+    }
     effects.add(squashAndFade(projectile.mesh));
   });
 
@@ -124,7 +131,7 @@ export function mount(root, ctx) {
 
   const hud = mountHud(root, game);
 
-  game.start({ difficulty, playerName });
+  game.start({ difficulty, playerName, mode });
 
   // Only attached when debug mode is on — see core/debugHooks.js.
   exposeDebugHooks({ __game: game, projectile, target });

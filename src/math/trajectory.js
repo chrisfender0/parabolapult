@@ -172,9 +172,13 @@ export function makeOrbitTrajectory() {
   }
 
   return {
-    landingX: null,
+    // landingX is a real number (not null) even though orbit never really
+    // "lands" — the projectile flight code (session 13.1) reads this the
+    // same way it reads any other trajectory's landingX to place the mesh
+    // in world space, and shouldn't need a special case for orbit.
+    landingX: ORBIT_DRIFT,
     k: 0,
-    apexX: null,
+    apexX: ORBIT_DRIFT / 2,
     apexY: ORBIT_HEIGHT,
     duration: ORBIT_DURATION,
     isNull: false,

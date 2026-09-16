@@ -415,6 +415,103 @@ body {
   cursor: pointer;
 }
 
+/* Parabolic mode — template panel + on-screen keypad (no soft keyboard) */
+
+.hud__parabolic-panel[hidden] {
+  display: none;
+}
+
+.hud__parabolic-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 26rem;
+}
+
+.hud__parabolic-blank {
+  display: inline-block;
+  min-width: 2.4rem;
+  text-align: center;
+  color: var(--color-ink);
+  background: rgba(79, 209, 255, 0.12);
+  border: 2px solid var(--color-accent);
+  border-radius: 0.4rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.hud__parabolic-blank--empty::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  vertical-align: -0.15em;
+  background: var(--color-accent);
+  animation: hud-caret-blink 1s step-end infinite;
+}
+
+@keyframes hud-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.hud__parabolic-invalid {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-crash);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+.hud__parabolic-invalid[hidden] {
+  display: none;
+}
+
+.keypad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.keypad__row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.keypad__key {
+  flex: 1;
+  min-width: 44px;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: rgba(79, 209, 255, 0.1);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.keypad__key:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.keypad__key--submit {
+  flex: 1.4;
+  font-size: 0.95rem;
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
 /* Menu screens (Landing, Setup) — a dimmed panel over the idle 3D scene. */
 
 .screen {
@@ -535,6 +632,34 @@ body {
 .setup__name-input:focus {
   outline: none;
   border-color: var(--color-accent);
+}
+
+.setup__mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.6rem;
+  border: 2px solid var(--color-grid-line);
+  background: rgba(79, 209, 255, 0.05);
+}
+
+.setup__mode-button {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.5rem 1.2rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--color-ink);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.setup__mode-button--selected {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  opacity: 1;
 }
 
 .setup__difficulties {
@@ -704,6 +829,18 @@ body {
   opacity: 0.7;
 }
 
+.result__parabolic-icon {
+  font-weight: 700;
+}
+
+.result__parabolic-icon--hit {
+  color: var(--color-hit);
+}
+
+.result__parabolic-icon--miss {
+  color: var(--color-crash);
+}
+
 /* Mute button — fixed corner, consistent across every screen. Appended
    directly to <body> (see ui/muteButton.js) so screenManager swapping
    #ui's contents never touches it. */
@@ -756,7 +893,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .hud__answer--shake,
   .hud__hard-locked-in,
-  .hud__hard-bar-fill {
+  .hud__hard-bar-fill,
+  .hud__parabolic-blank--empty::after {
     animation: none !important;
   }
 

@@ -6,6 +6,7 @@
 const KEY_PREFIX = 'parabolapult:';
 const LEADERBOARD_KEY = `${KEY_PREFIX}leaderboard`;
 const LAST_NAME_KEY = `${KEY_PREFIX}lastName`;
+const LAST_MODE_KEY = `${KEY_PREFIX}lastMode`;
 const MAX_ENTRIES = 20;
 
 function isValidEntry(entry) {
@@ -79,6 +80,24 @@ export function getLastName() {
 export function setLastName(name) {
   try {
     localStorage.setItem(LAST_NAME_KEY, name);
+  } catch {
+    // Ignore — non-critical.
+  }
+}
+
+/** Defaults to 'classic' — the mode Setup shows selected on a first visit. */
+export function getLastMode() {
+  try {
+    const stored = localStorage.getItem(LAST_MODE_KEY);
+    return stored === 'parabolic' ? 'parabolic' : 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+export function setLastMode(mode) {
+  try {
+    localStorage.setItem(LAST_MODE_KEY, mode);
   } catch {
     // Ignore — non-critical.
   }

@@ -1,7 +1,9 @@
 import { Emitter } from '../utils/Emitter.js';
 import { createRng } from '../utils/rng.js';
 import { makeEasy, makeMedium, checkAnswer } from '../math/equations.js';
-import { makeTrajectory } from '../math/trajectory.js';
+import { parseLinear, formatLinear } from '../math/linearExpr.js';
+import { makeParabolicEasy, makeParabolicMedium, makeParabolicHard, gradeParabolic } from '../math/parabolic.js';
+import { makeTrajectory, makeDiveTrajectory, makeOrbitTrajectory, makeOvershootTrajectory } from '../math/trajectory.js';
 import { resolveOutcome } from './flightOutcome.js';
 import { scoreRound } from './scoring.js';
 import { GameSession } from './GameSession.js';
@@ -12,12 +14,25 @@ export const ROUNDS_PER_GAME = 5;
 const HARD_SPEED_BONUS_MAX = 60;
 const HARD_FINAL_DURATION = 15; // seconds — the final equation is timed too
 
-// 'hard' is intentionally absent — beginRound() branches to the timed
-// HardSequence for it instead of a single generator call.
+// Keyed by `${mode}:${difficulty}`. 'classic:hard' is intentionally absent
+// — beginRound() branches to the timed HardSequence for it instead of a
+// single generator call. Parabolic has no such branch: all three of its
+// difficulties (including 'hard') are single-equation generators.
 const GENERATORS = {
-  easy: makeEasy,
-  medium: makeMedium,
+  'classic:easy': makeEasy,
+  'classic:medium': makeMedium,
+  'parabolic:easy': makeParabolicEasy,
+  'parabolic:medium': makeParabolicMedium,
+  'parabolic:hard': makeParabolicHard,
 };
+
+// True only for the one difficulty/mode combo with a timed memorization
+// phase. Every other "is this hard mode" check in this file goes through
+// this helper rather than comparing `difficulty === 'hard'` directly,
+// since Parabolic also has a (differently-shaped) 'hard' difficulty.
+function isClassicHard(session) {
+  return session.mode === 'classic' && session.difficulty === 'hard';
+}
 
 /**
  * Runs a round: generate an equation, place the target, take an answer,
@@ -54,12 +69,13 @@ export class GameController extends Emitter {
     this.hardSolvePending = '';
     this.hardSolveTimeLeft = 0;
     this.hardTypedFinal = null;
+    this.pendingParabolic = null; // { hit, flight, typed } — set by submitParabolic, read back in _handleLand
 
     this.projectile.on('land', (payload) => this._handleLand(payload));
   }
 
-  start({ difficulty, playerName }) {
-    this.session = new GameSession({ difficulty, playerName });
+  start({ difficulty, playerName, mode = 'classic' }) {
+    this.session = new GameSession({ difficulty, playerName, mode });
     this.beginRound();
   }
 
@@ -71,15 +87,17 @@ export class GameController extends Emitter {
     this.session.round += 1;
     this.session.triesRemaining = MAX_TRIES;
     this.roundOver = false;
+    this.pendingParabolic = null;
 
-    if (this.session.difficulty === 'hard') {
+    if (isClassicHard(this.session)) {
       this._beginHardRound();
       return;
     }
 
-    const generate = GENERATORS[this.session.difficulty];
+    const key = `${this.session.mode}:${this.session.difficulty}`;
+    const generate = GENERATORS[key];
     if (!generate) {
-      throw new Error(`no equation generator for difficulty "${this.session.difficulty}"`);
+      throw new Error(`no equation generator for mode/difficulty "${key}"`);
     }
 
     this.equation = generate(this.rng);
@@ -87,6 +105,7 @@ export class GameController extends Emitter {
     this.target.setMarker(this.targetMarker);
 
     this.emit('round:begin', {
+      mode: this.session.mode,
       difficulty: this.session.difficulty,
       equation: this.equation,
       targetMarker: this.targetMarker,
@@ -188,7 +207,7 @@ export class GameController extends Emitter {
   /** HUD calls this once all three recall inputs are filled (or the timer runs out). */
   submitHardRecall(values) {
     if (!this.session || this.roundOver || this.flying) return;
-    if (this.session.difficulty !== 'hard' || this.hardPhase !== 'recall') return;
+    if (!isClassicHard(this.session) || this.hardPhase !== 'recall') return;
 
     this.hardRecallValues = values.map((raw) => {
       const trimmed = String(raw ?? '').trim();
@@ -228,7 +247,7 @@ export class GameController extends Emitter {
    */
   submitHardFinal(value) {
     if (!this.session || this.roundOver || this.flying) return;
-    if (this.session.difficulty !== 'hard' || this.hardPhase !== 'solve') return;
+    if (!isClassicHard(this.session) || this.hardPhase !== 'solve') return;
 
     const trimmed = String(value ?? '').trim();
     const parsed = /^-?\d+$/.test(trimmed) ? Number(trimmed) : null;
@@ -270,6 +289,7 @@ export class GameController extends Emitter {
 
   submit(input) {
     if (!this.session || this.roundOver || this.flying) return;
+    if (this.session.mode !== 'classic') return; // Parabolic answers via submitParabolic()
     if (this.session.difficulty === 'hard') return; // hard mode answers via submitHardStep()
 
     const { parsed } = checkAnswer(this.equation, input);
@@ -282,16 +302,80 @@ export class GameController extends Emitter {
     this.projectile.launch(makeTrajectory(parsed));
   }
 
+  /**
+   * Parabolic mode's launch. `text` is the raw `ax + b` the player typed
+   * into the keypad. An unparsable expression never spends a try — it
+   * just reports back and waits for another attempt.
+   */
+  submitParabolic(text) {
+    if (!this.session || this.roundOver || this.flying) return;
+    if (this.session.mode !== 'parabolic') return;
+
+    const parsed = parseLinear(text);
+    if (parsed === null) {
+      this.emit('input:invalid', { text });
+      return;
+    }
+
+    const { hit, flight } = gradeParabolic(this.equation, parsed);
+    this.pendingParabolic = { hit, flight, typed: formatLinear(parsed) };
+
+    this.flying = true;
+    this.emit('launch', { value: flight.landingX ?? 0 });
+    this.projectile.launch(this._makeParabolicTrajectory(flight));
+  }
+
+  // Picks the trajectory shape that matches how gradeParabolic classified
+  // this attempt. Every branch returns the same yAt/pointAt/sample/duration
+  // shape (see plan/13-parabolic-engine.md), so nothing downstream needs a
+  // special case for which kind actually flew.
+  _makeParabolicTrajectory(flight) {
+    switch (flight.kind) {
+      case 'arc':
+        return makeTrajectory(flight.landingX);
+      case 'overshoot':
+        return makeOvershootTrajectory(flight.landingX);
+      case 'dive':
+        return makeDiveTrajectory();
+      case 'orbit':
+        return makeOrbitTrajectory();
+      default:
+        return makeTrajectory(0); // fizzle — resolves to the existing null trajectory
+    }
+  }
+
+  // Parabolic's landing result, parallel to resolveOutcome() for Classic.
+  // The hit/miss call itself comes from gradeParabolic's coefficient check
+  // (stashed in pendingParabolic by submitParabolic), never from rounding
+  // the trajectory's landingX — see session 13 for why that would be wrong.
+  // landedAt is the number shown to the player: the real (possibly
+  // fractional) root for arc/overshoot, the trajectory's own nominal crash
+  // point for dive/fizzle, and null for orbit, which never comes down.
+  _resolveParabolicResult(trajectory) {
+    const { hit, flight, typed } = this.pendingParabolic;
+    const landedAt =
+      flight.kind === 'orbit' ? null : flight.landedAt ?? Math.round(trajectory.landingX * 10) / 10;
+    return {
+      outcome: hit ? 'hit' : 'miss',
+      landedAt,
+      targetAt: this.targetMarker,
+      typed,
+      flightKind: flight.kind,
+    };
+  }
+
   _handleLand({ trajectory }) {
     this.flying = false;
     if (!this.session || this.roundOver) return;
 
-    const result = resolveOutcome(trajectory, this.targetMarker);
+    const result =
+      this.session.mode === 'parabolic' ? this._resolveParabolicResult(trajectory) : resolveOutcome(trajectory, this.targetMarker);
     this.session.history.push({
       round: this.session.round,
       landedAt: result.landedAt,
       targetAt: result.targetAt,
       outcome: result.outcome,
+      ...(this.session.mode === 'parabolic' ? { typed: result.typed, flightKind: result.flightKind } : {}),
     });
 
     if (result.outcome === 'hit') {
@@ -305,6 +389,7 @@ export class GameController extends Emitter {
         landedAt: result.landedAt,
         targetAt: result.targetAt,
         triesRemaining: this.session.triesRemaining,
+        flightKind: result.flightKind,
       });
       this.emit('round:won', { session: this.session });
       return;
@@ -320,12 +405,13 @@ export class GameController extends Emitter {
       landedAt: result.landedAt,
       targetAt: result.targetAt,
       triesRemaining: this.session.triesRemaining,
+      flightKind: result.flightKind,
     });
 
     // A hard-mode retry replays the whole final phase — recall the three
     // numbers again, then solve again. A wrong launch could mean they
     // misremembered a number, so they get a real second look at it.
-    if (this.session.difficulty === 'hard' && this.hardFinal && this.session.triesRemaining > 0) {
+    if (isClassicHard(this.session) && this.hardFinal && this.session.triesRemaining > 0) {
       this._beginHardRecall();
     }
 
@@ -341,7 +427,7 @@ export class GameController extends Emitter {
   // (a hit, or the final miss) — not on intermediate misses that still
   // have retries left.
   _concludeRound({ hit, tryIndex, result }) {
-    const isHard = this.session.difficulty === 'hard';
+    const isHard = isClassicHard(this.session);
     // Scaled linearly against the 45s (3 x 15s) total across the timed
     // equations; scoreRound zeroes this out on its own for a lost round.
     const speedBonus = isHard
@@ -352,6 +438,7 @@ export class GameController extends Emitter {
       hit,
       tryIndex,
       difficulty: this.session.difficulty,
+      mode: this.session.mode,
       streak: this.session.streak,
       speedBonus,
     });
@@ -381,6 +468,16 @@ export class GameController extends Emitter {
         steps: this.hardSequence.steps.map(({ color, badge }) => ({ color, badge })),
         correct: this.hardFinal.value,
         typed: this.hardTypedFinal,
+      };
+    } else if (this.session.mode === 'parabolic') {
+      // Same "what you were denied during play" reveal as hard mode's,
+      // scaled down to Parabolic's single attempt: the template solved,
+      // the canonical solution, and whatever was actually typed last.
+      roundSummary.parabolic = {
+        template: this.equation.template,
+        solution: formatLinear(this.equation.solution),
+        typed: this.pendingParabolic?.typed ?? null,
+        flightKind: this.pendingParabolic?.flight.kind ?? null,
       };
     } else {
       roundSummary.equation = this.equation.prompt;

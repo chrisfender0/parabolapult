@@ -121,6 +121,45 @@ label, always-visible container).
       (checked full network log — every asset resolved under the
       `/parabolapult/` base), played a Medium round through cleanly.
 
+## Parabolic mode (session 13.1)
+
+Run against the same build as the rest of this pass, driven through the
+automated browser pane plus `window.__game.submitParabolic()` for fast
+regression loops (see the debug-mode note at the top of this file).
+
+- [x] **Setup screen** — mode toggle switches card descriptions between
+      Classic's and Parabolic's (factored/standard/vertex wording); last
+      selected mode is remembered across a reload.
+- [x] **Easy, full game** — typed `12 − x` (and other algebraically
+      equivalent forms) for a target of 12 correctly hits; 5-round game
+      reaches Results with the Parabolic ×1.5 multiplier applied.
+- [x] **Invalid input** (`xx`) — shows "Can't read that. Try something like
+      12 − x", does **not** spend a try (pips unchanged), typed text stays
+      in the blank for correction.
+- [x] **Dive miss** (`x − 3` against a factored-form target, opens upward)
+      — shows "Opens upward. Straight into the ground.", burns a try, crash
+      particles play at the pad, and the previously-typed text is kept
+      (not cleared) for the retry.
+- [x] **Classic-mode regression** — Easy and Hard both replayed after the
+      mode/generator-table changes in `GameController`; hard mode's
+      timed memorization → recall → solve flow is unaffected (confirms the
+      `isClassicHard()` guard replaced every `difficulty === 'hard'` check
+      correctly, including the two inside `submitHardRecall`/
+      `submitHardFinal` that would otherwise have accepted Parabolic Hard).
+- [x] **Results screen reveal** — each round shows `you: <typed>` next to
+      a ✓/✗ icon and the canonical solution, matching the hard-mode
+      reveal's style.
+- [x] **Leaderboard** — a Parabolic entry displays as `Parabolic · Easy`;
+      pre-existing entries with no `mode` field still display correctly as
+      their plain difficulty label (`Hard`).
+- [x] **390×844 viewport** — ruler, target marker, full equation (template
+      + blank), and keypad all visible at once with no overlap; verified
+      via the browser pane's mobile emulation (375×812, iPhone-class).
+- [ ] Real phone keypad feel, Hard (vertex form) difficulty jump, and
+      whether the Parabolic scoring multipliers feel fair vs. Classic —
+      **not testable from this environment**. Ask Chris (see
+      plan/13.1-parabolic-play.md's "Ask Chris to").
+
 ## Known gaps
 
 See [KNOWN-ISSUES.md](KNOWN-ISSUES.md).

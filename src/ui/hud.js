@@ -4,6 +4,7 @@
 // state and forwards player input via game.submit()/game.nextRound().
 
 import { isDebugEnabled } from '../core/debugHooks.js';
+import { mountKeypad } from './keypad.js';
 import * as sfx from '../audio/sfx.js';
 
 const MAX_TRIES = 3;
@@ -12,6 +13,25 @@ const SHAKE_DURATION = 400; // ms, must match the CSS animation below
 const BADGE_SYMBOLS = ['①', '②', '③'];
 const LOCK_IN_DURATION = 550; // ms the neutral "Locked in" transition holds between hard-mode steps
 const TICK_MARKS = [3, 2, 1]; // seconds-remaining marks the countdown ticks on
+
+// Matches src/math/trajectory.js's RULER_END — not exported from there, so
+// duplicated here purely for the "Flew past 24" miss message's wording.
+const PARABOLIC_RULER_END = 24;
+
+// Miss feedback for every non-arc flight kind a Parabolic wrong answer can
+// produce (see plan/13-parabolic-engine.md's flight table). 'arc' isn't
+// listed here because it always has a real landing spot to report instead.
+const PARABOLIC_MISS_MESSAGES = {
+  dive: 'Opens upward. Straight into the ground.',
+  orbit: "No way down — it's still going up.",
+  fizzle: 'Never left the pad.',
+};
+
+function describeParabolicLanding(flightKind, landedAt) {
+  if (flightKind === 'overshoot') return `Flew past ${PARABOLIC_RULER_END}`;
+  if (flightKind === 'arc') return `Landed at ${landedAt}`;
+  return PARABOLIC_MISS_MESSAGES[flightKind] ?? `Landed at ${landedAt}`;
+}
 
 // Builds the token spans (and places the given blank element where the
 // equation's blank token sits) for either the main equation panel or a
@@ -163,6 +183,29 @@ export function mountHud(root, game) {
 
   hud.appendChild(hardSolveForm);
 
+  // Parabolic mode's panel: the template with the blank filled in as the
+  // player builds it on the keypad below, plus the "can't read that"
+  // message for unparsable input. No <input>/<form> here — the keypad's
+  // own Launch key drives submission (see mountKeypad below).
+  const parabolicPanel = document.createElement('div');
+  parabolicPanel.className = 'hud__parabolic-panel';
+  parabolicPanel.hidden = true;
+
+  const parabolicEquationEl = document.createElement('div');
+  parabolicEquationEl.className = 'hud__equation';
+  parabolicPanel.appendChild(parabolicEquationEl);
+
+  const parabolicInvalid = document.createElement('div');
+  parabolicInvalid.className = 'hud__parabolic-invalid';
+  parabolicInvalid.hidden = true;
+  parabolicInvalid.textContent = "Can't read that. Try something like 12 − x";
+  parabolicPanel.appendChild(parabolicInvalid);
+
+  const parabolicKeypadRoot = document.createElement('div');
+  parabolicPanel.appendChild(parabolicKeypadRoot);
+
+  hud.appendChild(parabolicPanel);
+
   const roundOver = document.createElement('div');
   roundOver.className = 'hud__round-over';
   roundOver.hidden = true;
@@ -192,6 +235,19 @@ export function mountHud(root, game) {
   let hardSolveAnswerInput = null;
   let hardJustFailed = false; // true right after a mini-equation failure, until the retry's step 0 renders
   let tickTimeoutIds = [];
+  let currentMode = 'classic';
+  let parabolicBlankEl = null;
+  let parabolicValue = '';
+
+  const keypad = mountKeypad(parabolicKeypadRoot, {
+    onChange: (value) => updateParabolicBlank(value),
+    onSubmit: () => {
+      if (parabolicValue.trim() === '') return;
+      hideFeedback();
+      hideParabolicInvalid();
+      game.submitParabolic(parabolicValue);
+    },
+  });
 
   function clearCountdownTicks() {
     for (const id of tickTimeoutIds) clearTimeout(id);
@@ -573,6 +629,72 @@ export function mountHud(root, game) {
     }, SHAKE_DURATION);
   }
 
+  // Builds the static before/blank/after structure once per round; typing
+  // only ever touches the blank's text via updateParabolicBlank, driven by
+  // the keypad's onChange.
+  function renderParabolicEquation(template) {
+    parabolicEquationEl.replaceChildren();
+
+    const before = document.createElement('span');
+    before.className = 'hud__token';
+    before.textContent = template.before;
+    parabolicEquationEl.appendChild(before);
+
+    parabolicBlankEl = document.createElement('span');
+    parabolicBlankEl.className = 'hud__parabolic-blank';
+    parabolicEquationEl.appendChild(parabolicBlankEl);
+
+    const after = document.createElement('span');
+    after.className = 'hud__token';
+    after.textContent = template.after;
+    parabolicEquationEl.appendChild(after);
+
+    updateParabolicBlank('');
+  }
+
+  // The minus key is stored as ASCII '-' (see keypad.js) but displayed as
+  // U+2212, matching the rest of the HUD's typography.
+  function updateParabolicBlank(text) {
+    parabolicValue = text;
+    if (!parabolicBlankEl) return;
+    parabolicBlankEl.textContent = text.replace(/-/g, '−');
+    parabolicBlankEl.classList.toggle('hud__parabolic-blank--empty', text === '');
+  }
+
+  function showParabolicInvalid() {
+    parabolicInvalid.hidden = false;
+  }
+
+  function hideParabolicInvalid() {
+    parabolicInvalid.hidden = true;
+  }
+
+  function setParabolicEnabled(enabled) {
+    keypad.setDisabled(!enabled);
+  }
+
+  function shakeParabolicBlank() {
+    clearTimeout(shakeTimeoutId);
+    if (!parabolicBlankEl) return;
+    parabolicBlankEl.classList.remove('hud__answer--shake');
+    void parabolicBlankEl.offsetWidth; // force reflow so repeat misses restart the animation
+    parabolicBlankEl.classList.add('hud__answer--shake');
+    shakeTimeoutId = setTimeout(() => parabolicBlankEl?.classList.remove('hud__answer--shake'), SHAKE_DURATION);
+  }
+
+  function handleInputInvalid() {
+    showParabolicInvalid();
+  }
+
+  // submitParabolic() emits 'launch' synchronously once it's confirmed the
+  // input parses — by the time it returns, exactly one of this or
+  // handleInputInvalid has already fired.
+  function handleLaunch() {
+    if (currentMode !== 'parabolic') return;
+    hideParabolicInvalid();
+    setParabolicEnabled(false);
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
     if (!answerInput || answerInput.disabled) return;
@@ -585,12 +707,36 @@ export function mountHud(root, game) {
     game.submit(value);
   }
 
-  function handleRoundBegin({ difficulty, equation, targetMarker, triesRemaining, round, totalRounds, score }) {
+  function handleRoundBegin({ mode, difficulty, equation, targetMarker, triesRemaining, round, totalRounds, score }) {
     clearTimeout(advanceTimeoutId);
     status.textContent = `Round ${round} / ${totalRounds} · Score: ${score}`;
     hideFeedback();
     roundOver.hidden = true;
     lastLossDetail = '';
+    currentMode = mode;
+
+    if (mode === 'parabolic') {
+      pipsRow.hidden = false;
+      form.hidden = true;
+      hardPanel.hidden = true;
+      hardRecallForm.hidden = true;
+      hardSolveForm.hidden = true;
+      parabolicPanel.hidden = false;
+      hideParabolicInvalid();
+      if (isDebugEnabled()) {
+        targetReadout.textContent = `Target: marker ${targetMarker}`;
+        targetReadout.hidden = false;
+      } else {
+        targetReadout.hidden = true;
+      }
+      setPips(triesRemaining);
+      renderParabolicEquation(equation.template);
+      keypad.clear();
+      setParabolicEnabled(true);
+      return;
+    }
+
+    parabolicPanel.hidden = true;
 
     if (difficulty === 'hard') {
       // Hard mode's memorization phase has no tries/target/launch yet —
@@ -629,17 +775,32 @@ export function mountHud(root, game) {
   }
 
   function handleHit({ landedAt }) {
-    setInputEnabled(false);
+    if (currentMode === 'parabolic') setParabolicEnabled(false);
+    else setInputEnabled(false);
     showFeedback(`Nailed it — landed at ${landedAt}!`, 'hit');
     advanceTimeoutId = setTimeout(() => game.nextRound(), HIT_ADVANCE_DELAY);
   }
 
-  function handleMiss({ landedAt, targetAt, triesRemaining }) {
+  function handleMiss({ landedAt, targetAt, triesRemaining, flightKind }) {
     setPips(triesRemaining);
     // Naming the target's position mid-round would hand over the answer
     // for the remaining retries — only reveal it once the round is
     // actually over (no tries left) or in debug mode.
     const revealTarget = triesRemaining === 0 || isDebugEnabled();
+
+    if (currentMode === 'parabolic') {
+      let message = describeParabolicLanding(flightKind, landedAt);
+      if (revealTarget) message += ` — target was ${targetAt}`;
+      showFeedback(message, 'miss');
+      shakeParabolicBlank();
+      // Unlike Classic, the typed expression is kept after a miss — the
+      // player fixes it rather than retyping from scratch (the keypad
+      // never clears its own value on a miss, see keypad.js).
+      setParabolicEnabled(triesRemaining > 0);
+      if (triesRemaining === 0) lastLossDetail = message;
+      return;
+    }
+
     const message = revealTarget ? `Landed at ${landedAt} — target was ${targetAt}` : `Landed at ${landedAt} — try again`;
     showFeedback(message, 'miss');
     shakeActiveInputs();
@@ -685,6 +846,8 @@ export function mountHud(root, game) {
     game.on('hard:sequenceComplete', handleHardSequenceComplete),
     game.on('hard:recall', handleHardRecall),
     game.on('hard:solve', handleHardSolve),
+    game.on('launch', handleLaunch),
+    game.on('input:invalid', handleInputInvalid),
   ];
 
   function unmount() {
@@ -697,6 +860,7 @@ export function mountHud(root, game) {
     hardRecallForm.removeEventListener('submit', handleHardRecallSubmit);
     hardSolveForm.removeEventListener('submit', handleHardSolveSubmit);
     continueButton.removeEventListener('click', handleContinue);
+    keypad.unmount();
     for (const off of unsubscribers) off();
     hud.remove();
   }

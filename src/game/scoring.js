@@ -9,6 +9,11 @@ export const TRY_BONUS = [50, 20, 0];
 
 export const DIFFICULTY_MULTIPLIER = { easy: 1, medium: 1.5, hard: 2.5 };
 
+// Parabolic has no speed bonus (no timed memorization phase), so it's
+// scored somewhat lower than Classic Hard at best — acceptable per the
+// plan, tunable after play-testing.
+export const PARABOLIC_DIFFICULTY_MULTIPLIER = { easy: 1.5, medium: 2, hard: 2.5 };
+
 // Consecutive first-try hits stack: 1st in a row +25, 2nd +50, 3rd +75...
 export const STREAK_BONUS_STEP = 25;
 
@@ -17,13 +22,15 @@ export const STREAK_BONUS_STEP = 25;
  *   hit: boolean,
  *   tryIndex?: number,       // 0-based try the hit landed on; ignored on a miss
  *   difficulty: 'easy' | 'medium' | 'hard',
+ *   mode?: 'classic' | 'parabolic',
  *   streak: number,          // consecutive first-try hits *before* this round
- *   speedBonus?: number,     // hard mode only (session 10) — 0 elsewhere
+ *   speedBonus?: number,     // classic hard mode only (session 10) — 0 elsewhere
  * }} params
  * @returns {{ points: number, breakdown: object }}
  */
-export function scoreRound({ hit, tryIndex, difficulty, streak, speedBonus = 0 }) {
-  const multiplier = DIFFICULTY_MULTIPLIER[difficulty] ?? 1;
+export function scoreRound({ hit, tryIndex, difficulty, mode = 'classic', streak, speedBonus = 0 }) {
+  const multipliers = mode === 'parabolic' ? PARABOLIC_DIFFICULTY_MULTIPLIER : DIFFICULTY_MULTIPLIER;
+  const multiplier = multipliers[difficulty] ?? 1;
 
   // A lost round (all 3 tries missed) scores zero — see plan/09's design
   // note: rounds exhausted ends the game, a single bad round doesn't.

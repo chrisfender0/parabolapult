@@ -1,9 +1,10 @@
 // Plain data for one playthrough. GameController owns all the lifecycle
 // logic and mutates these fields directly — this class is just the shape.
 export class GameSession {
-  constructor({ difficulty, playerName }) {
+  constructor({ difficulty, playerName, mode = 'classic' }) {
     this.difficulty = difficulty;
     this.playerName = playerName;
+    this.mode = mode; // 'classic' | 'parabolic'
     this.round = 0;
     this.score = 0;
     this.triesRemaining = 0;
