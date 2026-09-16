@@ -27,6 +27,25 @@ fast enough in practice, and code-splitting a single-page game like this
 would add complexity for little real benefit. Worth revisiting only if
 load time ever becomes a complaint.
 
+## Parabolic mode: wrong-answer arcs use the fixed-height classic trajectory
+
+Every `arc`-kind flight in Parabolic mode (session 13) — hits and wrong
+answers whose largest root lands in range — is rendered with the existing
+`makeTrajectory(landingX)`, the same fixed-apex-height parabola Classic mode
+uses. That's a deliberate simplification, not the real curve the player's
+equation describes:
+
+- The arc's apex height is always the fixed `APEX_HEIGHT`, not the apex the
+  actual equation would have. `y = −x² + 12x` really peaks at 36, far above
+  what's shown.
+- The projectile always launches visually from the pad at `(0, 0)`, even
+  when the real equation doesn't pass through the origin. A wrong Hard
+  answer like `x − 5` has `y(0) = 11`, but nothing shows that liftoff point.
+
+Landing position is the only thing the flight shows exactly. Revisit only if
+Parabolic mode's flights need to look mathematically accurate rather than
+just land in the right place.
+
 ## No automated tests
 
 Everything in `TEST-CHECKLIST.md` is manual (plus the `console.assert`

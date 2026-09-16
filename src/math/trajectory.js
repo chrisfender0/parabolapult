@@ -41,6 +41,7 @@ function makeNullTrajectory(landingX) {
     apexY: 0,
     duration: FIZZLE_DURATION,
     isNull: true,
+    kind: 'fizzle',
     yAt: () => 0,
     pointAt: () => ({ x: 0, y: 0 }),
     sample: (count) => Array.from({ length: Math.max(count, 0) + 1 }, () => ({ x: 0, y: 0 })),
@@ -97,7 +98,111 @@ export function makeTrajectory(landingX, { apex = APEX_HEIGHT } = {}) {
     apexY: H,
     duration: computeDuration(A),
     isNull: false,
+    kind: 'arc',
     yAt,
+    pointAt,
+    sample,
+  };
+}
+
+// --- Parabolic-mode wrong-answer flights ----------------------------------
+// These three cover the non-arc rows of the flight table in
+// plan/13-parabolic-engine.md: a parabola that opens upward (dive), a
+// straight line climbing forever (orbit), and a normal arc whose landing
+// spot is past the edge of the ruler (overshoot). Each returns the same
+// shape as makeTrajectory (yAt/pointAt/sample/duration) plus `kind`, so the
+// flight-animation code in session 13.1 can treat every result uniformly.
+
+const RULER_END = 24;
+const OVERSHOOT_MARGIN = 2;
+
+const DIVE_LANDING_X = 1.5;
+const DIVE_APEX = 0.6;
+const DIVE_TRAVEL = 1.6; // multiple of DIVE_LANDING_X the hop travels, so the dip below y=0 is visible
+const DIVE_DURATION = 0.6;
+
+/** A short hop that curves down below y = 0 by about x = 1.5 — a parabola opening upward, crashing just past the launcher. */
+export function makeDiveTrajectory() {
+  const A = DIVE_LANDING_X;
+  const H = DIVE_APEX;
+  const k = (4 * H) / (A * A);
+
+  function yAt(x) {
+    return k * x * (A - x);
+  }
+  function pointAt(t) {
+    const x = A * DIVE_TRAVEL * clamp(t, 0, 1);
+    return { x, y: yAt(x) };
+  }
+  function sample(count) {
+    const n = Math.max(count, 1);
+    return Array.from({ length: n + 1 }, (_, i) => pointAt(i / n));
+  }
+
+  return {
+    landingX: A,
+    k,
+    apexX: A / 2,
+    apexY: H,
+    duration: DIVE_DURATION,
+    isNull: false,
+    kind: 'dive',
+    yAt,
+    pointAt,
+    sample,
+  };
+}
+
+const ORBIT_DURATION = 1.2;
+const ORBIT_HEIGHT = 30;
+const ORBIT_DRIFT = 0.5;
+
+/** Rises steeply off the top of the frame in about 1.2s and never comes down — a straight line with a positive slope. */
+export function makeOrbitTrajectory() {
+  function yAt(x) {
+    return ORBIT_DRIFT > 0 ? (x / ORBIT_DRIFT) * ORBIT_HEIGHT : 0;
+  }
+  function pointAt(t) {
+    const clamped = clamp(t, 0, 1);
+    return { x: ORBIT_DRIFT * clamped, y: ORBIT_HEIGHT * clamped };
+  }
+  function sample(count) {
+    const n = Math.max(count, 1);
+    return Array.from({ length: n + 1 }, (_, i) => pointAt(i / n));
+  }
+
+  return {
+    landingX: null,
+    k: 0,
+    apexX: null,
+    apexY: ORBIT_HEIGHT,
+    duration: ORBIT_DURATION,
+    isNull: false,
+    kind: 'orbit',
+    yAt,
+    pointAt,
+    sample,
+  };
+}
+
+/** A normal arc toward `landingX`, but the animation ends when x passes the ruler's end plus a small margin. */
+export function makeOvershootTrajectory(landingX) {
+  const base = makeTrajectory(landingX);
+  const endX = RULER_END + OVERSHOOT_MARGIN;
+  const tEnd = landingX > 0 ? clamp(endX / landingX, 0, 1) : 0;
+
+  function pointAt(t) {
+    return base.pointAt(clamp(t, 0, 1) * tEnd);
+  }
+  function sample(count) {
+    const n = Math.max(count, 1);
+    return Array.from({ length: n + 1 }, (_, i) => pointAt(i / n));
+  }
+
+  return {
+    ...base,
+    kind: 'overshoot',
+    duration: base.duration * tEnd,
     pointAt,
     sample,
   };
@@ -151,6 +256,52 @@ if (import.meta.env?.DEV) {
     isClose(farShot.apexY, APEX_HEIGHT),
     'apex height should stay constant regardless of distance',
     farShot.apexY,
+  );
+
+  const dive = makeDiveTrajectory();
+  console.assert(dive.kind === 'dive', 'dive trajectory should be kind "dive"');
+  const divePoints = dive.sample(20);
+  console.assert(
+    divePoints.some((p) => p.y < 0),
+    'dive trajectory should dip below y = 0',
+    divePoints,
+  );
+  console.assert(
+    divePoints.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)),
+    'dive trajectory should never produce NaN/Infinity',
+  );
+
+  const orbit = makeOrbitTrajectory();
+  console.assert(orbit.kind === 'orbit', 'orbit trajectory should be kind "orbit"');
+  const orbitPoints = orbit.sample(20);
+  console.assert(
+    orbitPoints[orbitPoints.length - 1].y > orbitPoints[0].y,
+    'orbit trajectory should climb over its duration',
+    orbitPoints,
+  );
+  console.assert(
+    orbitPoints.every((p, i) => i === 0 || p.y >= orbitPoints[i - 1].y),
+    'orbit trajectory should never come back down',
+  );
+
+  const overshoot = makeOvershootTrajectory(30);
+  console.assert(overshoot.kind === 'overshoot', 'overshoot trajectory should be kind "overshoot"');
+  const overshootPoints = overshoot.sample(20);
+  const overshootMaxX = Math.max(...overshootPoints.map((p) => p.x));
+  console.assert(
+    isClose(overshootMaxX, RULER_END + OVERSHOOT_MARGIN, 1e-3),
+    'overshoot trajectory should stop at the ruler end plus margin',
+    overshootMaxX,
+  );
+  console.assert(
+    overshoot.duration < makeTrajectory(30).duration,
+    'overshoot trajectory should end sooner than the full arc it is cut from',
+  );
+
+  const shortOvershoot = makeOvershootTrajectory(25);
+  console.assert(
+    shortOvershoot.duration <= makeTrajectory(25).duration,
+    'overshoot trajectory should never run longer than the full arc it is cut from',
   );
 
   console.log('[trajectory.js] self-test assertions ran — check above for any failures');
