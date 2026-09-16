@@ -6,8 +6,13 @@ import { isDebugEnabled } from '../core/debugHooks.js';
 // disc and a number label that both update when setMarker moves it.
 const FLOOR_COLOR = 0x2a4a63;
 const WALL_COLOR = 0x1e3a54; // var(--color-grid-line)
-const GLOW_COLOR = 0x3ddc84; // var(--color-hit)
-const LABEL_COLOR = '#3ddc84'; // var(--color-hit)
+// Neutral accent, not the hit-green — reveal() also runs for the losing
+// miss of a round (see ui/screens/Game.js's try:miss handler), so this
+// can't be colored like a success cue. The actual hit celebration is the
+// separate green pulseGroup flash in ui/screens/Game.js, triggered only
+// on try:hit.
+const GLOW_COLOR = 0x4fd1ff; // var(--color-accent)
+const LABEL_COLOR = '#4fd1ff'; // var(--color-accent)
 
 const CONTAINER_WIDTH = 1.4;
 const CONTAINER_DEPTH = 1.0;

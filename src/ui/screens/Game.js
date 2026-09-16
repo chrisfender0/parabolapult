@@ -42,10 +42,10 @@ export function mount(root, ctx) {
 
   const game = new GameController({ projectile, target });
 
-  // The target stays hidden until a shot lands — its position is the
-  // equation's answer, so showing it up front would let the player skip
-  // solving. It reappears once revealed (hit or miss) and stays visible
-  // through any retries in that round; a fresh round hides it again.
+  // The target stays hidden until the round is actually decided — a hit,
+  // or the last miss once tries run out. Revealing it on every miss would
+  // hand over the answer for whatever retries are still left; a fresh
+  // round hides it again regardless of how the last one ended.
   game.on('round:begin', () => {
     target.hide();
     cameraRig.settle();
@@ -75,8 +75,12 @@ export function mount(root, ctx) {
     spawnScorePopup(lastPoints);
   });
 
-  game.on('try:miss', ({ landedAt }) => {
-    target.reveal();
+  game.on('try:miss', ({ landedAt, triesRemaining }) => {
+    // Revealing the container on every miss would hand over the answer
+    // for the retries still left in the round — only show it once the
+    // round is actually over (out of tries), matching the HUD's own
+    // "landed at X — target was Y" text (see hud.js's handleMiss).
+    if (triesRemaining === 0) target.reveal();
     cameraRig.settle();
     cameraRig.trigger(0.85);
     sfx.playCrash();
