@@ -285,6 +285,28 @@ body {
   text-align: center;
   padding: 0.5rem 0;
   font-weight: 600;
+  animation: hud-commit-pop 0.3s ease;
+}
+
+@keyframes hud-commit-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes hud-bar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .hud__hard-locked-in--neutral {
@@ -680,4 +702,69 @@ body {
   font-size: 0.75rem;
   font-weight: 400;
   opacity: 0.7;
+}
+
+/* Mute button — fixed corner, consistent across every screen. Appended
+   directly to <body> (see ui/muteButton.js) so screenManager swapping
+   #ui's contents never touches it. */
+
+.mute-button {
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  right: calc(0.75rem + env(safe-area-inset-right));
+  z-index: 10;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  border-radius: 50%;
+  border: 2px solid var(--color-grid-line);
+  background: rgba(10, 20, 32, 0.75);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.mute-button--muted {
+  opacity: 0.6;
+}
+
+/* Score popup — a floating "+N" projected from the target's 3D position
+   into screen space once, then animated purely in CSS. */
+
+.score-popup {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-hit);
+  text-shadow: 0 0 12px rgba(61, 220, 132, 0.6);
+  opacity: 1;
+  pointer-events: none;
+  transition: transform 0.9s ease-out, opacity 0.9s ease-out;
+  white-space: nowrap;
+}
+
+.score-popup--rise {
+  transform: translate(-50%, -260%);
+  opacity: 0;
+}
+
+/* Reduced motion — cut shake, slow-mo, idle drift, and the decorative
+   CSS animations above. Camera/slow-mo effects are separately gated in
+   JS via src/utils/motion.js; this covers everything CSS-driven. */
+
+@media (prefers-reduced-motion: reduce) {
+  .hud__answer--shake,
+  .hud__hard-locked-in,
+  .hud__hard-bar-fill {
+    animation: none !important;
+  }
+
+  .score-popup {
+    transition: opacity 0.4s ease-out;
+  }
+
+  .score-popup--rise {
+    transform: translate(-50%, -50%);
+  }
 }

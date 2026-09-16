@@ -1,8 +1,10 @@
 import { createRenderer } from './core/renderer.js';
 import { start } from './core/loop.js';
+import { createSlowMo } from './core/slowMo.js';
 import { buildWorld } from './world/index.js';
 import './core/debugHooks.js'; // registers window.__enableDebug() / __disableDebug()
 import { createScreenManager } from './ui/screenManager.js';
+import { mountMuteButton } from './ui/muteButton.js';
 import * as LandingScreen from './ui/screens/Landing.js';
 import * as SetupScreen from './ui/screens/Setup.js';
 import * as GameScreen from './ui/screens/Game.js';
@@ -12,6 +14,9 @@ import './style.css';
 const canvas = document.getElementById('app');
 const uiRoot = document.getElementById('ui');
 const { scene, camera, renderer } = createRenderer(canvas);
+
+mountMuteButton();
+const slowMo = createSlowMo();
 
 // Built once and kept alive for the whole session — Landing/Setup render
 // on top of it (dimmed, camera gently drifting) instead of it being torn
@@ -31,12 +36,13 @@ const screens = createScreenManager(uiRoot);
 const registry = { landing: LandingScreen, setup: SetupScreen, game: GameScreen, result: ResultScreen };
 
 function showScreen(name, extra = {}) {
-  screens.show(registry[name], { scene, camera, world, addUpdater, showScreen, ...extra });
+  screens.show(registry[name], { scene, camera, world, addUpdater, showScreen, slowMo, ...extra });
 }
 
 showScreen('landing');
 
-start((dt) => {
+start((realDt) => {
+  const dt = realDt * slowMo.update(realDt);
   for (const update of updaters) update(dt);
   renderer.render(scene, camera);
 });

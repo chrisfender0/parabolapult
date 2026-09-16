@@ -15,6 +15,26 @@ const TRAIL_Z = 0.35;
 const SPIN_X = 6;
 const SPIN_Z = 4;
 
+// Per-vertex alpha (LineBasicMaterial has no per-vertex opacity) so the
+// trail tapers from faint near the launch point to fully opaque at
+// whatever's the current leading edge, instead of a flat, uniform line.
+const TRAIL_VERTEX_SHADER = `
+  attribute float alpha;
+  varying float vAlpha;
+  void main() {
+    vAlpha = alpha;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const TRAIL_FRAGMENT_SHADER = `
+  uniform vec3 color;
+  uniform float opacity;
+  varying float vAlpha;
+  void main() {
+    gl_FragColor = vec4(color, vAlpha * opacity);
+  }
+`;
+
 /**
  * A single projectile: mesh + progressively-revealed arc trail, driven by
  * a trajectory from src/math/trajectory.js. The trajectory's own x runs
@@ -43,11 +63,27 @@ export class Projectile extends Emitter {
       'position',
       new THREE.BufferAttribute(new Float32Array((TRAIL_SAMPLES + 1) * 3), 3)
     );
+    // Static taper: index 0 (the launch end) stays faint, index
+    // TRAIL_SAMPLES (whatever's currently the leading edge, since the
+    // draw range only ever grows toward it) reaches full opacity.
+    const alphas = new Float32Array(TRAIL_SAMPLES + 1);
+    for (let i = 0; i <= TRAIL_SAMPLES; i += 1) {
+      alphas[i] = 0.12 + 0.88 * (i / TRAIL_SAMPLES) ** 0.7;
+    }
+    trailGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
     trailGeometry.setDrawRange(0, 0);
 
     this.trail = new THREE.Line(
       trailGeometry,
-      new THREE.LineBasicMaterial({ color: TRAIL_COLOR, transparent: true, opacity: 0.55 })
+      new THREE.ShaderMaterial({
+        uniforms: {
+          color: { value: new THREE.Color(TRAIL_COLOR) },
+          opacity: { value: 0.55 },
+        },
+        vertexShader: TRAIL_VERTEX_SHADER,
+        fragmentShader: TRAIL_FRAGMENT_SHADER,
+        transparent: true,
+      })
     );
     // The draw range shrinks/grows every frame during flight; recomputing
     // a bounding sphere for culling on every update is wasted work for a

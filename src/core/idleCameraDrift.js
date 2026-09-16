@@ -1,3 +1,5 @@
+import { prefersReducedMotion } from '../utils/motion.js';
+
 // Gentle idle sway for the camera while the player is on a menu screen
 // (Landing/Setup) — small and slow, just enough that the 3D scene behind
 // the UI doesn't feel frozen. Not used during gameplay: Game.js's own
@@ -12,6 +14,7 @@ export function createIdleCameraDrift(camera) {
   let elapsed = 0;
 
   function update(dt) {
+    if (prefersReducedMotion()) return;
     elapsed += dt;
     camera.position.x = basePosition.x + Math.sin(elapsed * SPEED_X * Math.PI * 2) * AMPLITUDE_X;
     camera.position.y = basePosition.y + Math.cos(elapsed * SPEED_Y * Math.PI * 2) * AMPLITUDE_Y;

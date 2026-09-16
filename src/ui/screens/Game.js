@@ -3,18 +3,22 @@ import { Projectile } from '../../game/Projectile.js';
 import { GameController } from '../../game/GameController.js';
 import {
   createEffectsManager,
-  createCameraShake,
+  createCameraRig,
   createFragmentBurst,
   createGroundFlash,
+  createDustPuff,
+  createScorchMark,
   pulseGroup,
   squashAndFade,
   dropIntoContainer,
 } from '../../game/effects.js';
 import { mountHud } from '../hud.js';
 import { exposeDebugHooks } from '../../core/debugHooks.js';
+import * as sfx from '../../audio/sfx.js';
 
 const HIT_COLOR = 0x3ddc84; // var(--color-hit)
 const CRASH_COLOR = 0xff4d5e; // var(--color-crash)
+const SCORE_POPUP_LIFETIME = 900; // ms, must match the CSS transition below
 
 let cleanup = null;
 
@@ -24,17 +28,17 @@ let cleanup = null;
  * mounts the HUD, and starts a round for ctx.difficulty / ctx.playerName.
  *
  * @param {HTMLElement} root - the #ui element the HUD renders into.
- * @param {{ scene, camera, world, addUpdater, difficulty, playerName }} ctx
+ * @param {{ scene, camera, world, addUpdater, difficulty, playerName, slowMo }} ctx
  */
 export function mount(root, ctx) {
-  const { scene, camera, world, addUpdater, difficulty, playerName } = ctx;
+  const { scene, camera, world, addUpdater, difficulty, playerName, slowMo } = ctx;
   const { launcher, target } = world;
 
   const projectile = new Projectile(launcher.muzzle);
   scene.add(projectile.group);
 
   const effects = createEffectsManager();
-  const cameraShake = createCameraShake(camera);
+  const cameraRig = createCameraRig(camera);
 
   const game = new GameController({ projectile, target });
 
@@ -42,28 +46,73 @@ export function mount(root, ctx) {
   // equation's answer, so showing it up front would let the player skip
   // solving. It reappears once revealed (hit or miss) and stays visible
   // through any retries in that round; a fresh round hides it again.
-  game.on('round:begin', () => target.hide());
+  game.on('round:begin', () => {
+    target.hide();
+    cameraRig.settle();
+  });
+
+  game.on('launch', ({ value }) => {
+    sfx.playLaunch();
+    cameraRig.setFlightTarget(value);
+  });
+
+  // Set once by round:scored (which always fires before try:hit/try:miss
+  // for the same landing — see GameController._concludeRound) so the hit
+  // celebration's score popup can show what was actually just earned.
+  let lastPoints = 0;
+  game.on('round:scored', ({ points }) => {
+    lastPoints = points;
+  });
 
   game.on('try:hit', () => {
     target.reveal();
+    cameraRig.settle();
+    sfx.playHit();
+    slowMo?.trigger({ scale: 0.25, hold: 90, recover: 220 });
     effects.add(pulseGroup(target.group, { color: HIT_COLOR }));
     effects.add(dropIntoContainer(projectile.mesh));
+    spawnScorePopup(lastPoints);
   });
 
   game.on('try:miss', ({ landedAt }) => {
     target.reveal();
-    cameraShake.trigger(0.85);
+    cameraRig.settle();
+    cameraRig.trigger(0.85);
+    sfx.playCrash();
+    const landedWorldX = worldXForMarker(landedAt);
     effects.add(createFragmentBurst(scene, projectile.mesh.position.clone(), CRASH_COLOR, 12));
-    effects.add(createGroundFlash(scene, worldXForMarker(landedAt), CRASH_COLOR));
+    effects.add(createGroundFlash(scene, landedWorldX, CRASH_COLOR));
+    effects.add(createDustPuff(scene, projectile.mesh.position.clone(), CRASH_COLOR));
+    effects.add(createScorchMark(scene, landedWorldX));
     effects.add(squashAndFade(projectile.mesh));
   });
 
   game.on('game:over', ({ session }) => ctx.showScreen('result', { session }));
 
+  // Floating "+N" that rises and fades over the target container —
+  // projected from its 3D world position into screen space once, then
+  // animated purely in CSS (see .score-popup in style.css).
+  function spawnScorePopup(points) {
+    if (!points) return;
+    const worldPos = target.group.position.clone();
+    worldPos.y += 1.4;
+    worldPos.project(camera);
+
+    const el = document.createElement('div');
+    el.className = 'score-popup';
+    el.textContent = `+${points}`;
+    el.style.left = `${(worldPos.x * 0.5 + 0.5) * window.innerWidth}px`;
+    el.style.top = `${(-worldPos.y * 0.5 + 0.5) * window.innerHeight}px`;
+    root.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add('score-popup--rise'));
+    setTimeout(() => el.remove(), SCORE_POPUP_LIFETIME);
+  }
+
   const removeUpdater = addUpdater((dt) => {
     projectile.update(dt);
     effects.update(dt);
-    cameraShake.update(dt);
+    cameraRig.update(dt);
     game.updateHard(dt);
   });
 

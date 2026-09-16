@@ -30,7 +30,7 @@ const GENERATORS = {
  * built from their correct answers.
  *
  * Events: round:begin, hard:step, hard:miniMiss, hard:sequenceComplete,
- * try:hit, try:miss, round:scored, round:won, round:lost, game:over.
+ * launch, try:hit, try:miss, round:scored, round:won, round:lost, game:over.
  */
 export class GameController extends Emitter {
   constructor({ projectile, target, rng = createRng() }) {
@@ -241,6 +241,7 @@ export class GameController extends Emitter {
     const landingX = parsed ?? 0;
 
     this.flying = true;
+    this.emit('launch', { value: landingX });
     this.projectile.launch(makeTrajectory(landingX));
   }
 
@@ -277,6 +278,7 @@ export class GameController extends Emitter {
     this.flying = true;
     // Trajectory is built from what the player typed, not the correct
     // answer — a wrong number must visibly fly to the wrong place.
+    this.emit('launch', { value: parsed });
     this.projectile.launch(makeTrajectory(parsed));
   }
 

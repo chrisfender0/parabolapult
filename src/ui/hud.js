@@ -4,12 +4,14 @@
 // state and forwards player input via game.submit()/game.nextRound().
 
 import { isDebugEnabled } from '../core/debugHooks.js';
+import * as sfx from '../audio/sfx.js';
 
 const MAX_TRIES = 3;
 const HIT_ADVANCE_DELAY = 1400; // ms the success banner stays up before the next round starts
 const SHAKE_DURATION = 400; // ms, must match the CSS animation below
 const BADGE_SYMBOLS = ['①', '②', '③'];
 const LOCK_IN_DURATION = 550; // ms the neutral "Locked in" transition holds between hard-mode steps
+const TICK_MARKS = [3, 2, 1]; // seconds-remaining marks the countdown ticks on
 
 // Builds the token spans (and places the given blank element where the
 // equation's blank token sits) for either the main equation panel or a
@@ -189,6 +191,25 @@ export function mountHud(root, game) {
   let hardRecallInputs = [];
   let hardSolveAnswerInput = null;
   let hardJustFailed = false; // true right after a mini-equation failure, until the retry's step 0 renders
+  let tickTimeoutIds = [];
+
+  function clearCountdownTicks() {
+    for (const id of tickTimeoutIds) clearTimeout(id);
+    tickTimeoutIds = [];
+  }
+
+  // Schedules sfx.playTick() at each of the countdown's final few seconds —
+  // driven by wall-clock timeouts rather than the frame loop, since the
+  // bar's own visual countdown is likewise a CSS transition, not per-frame
+  // JS (see restartBar below).
+  function scheduleCountdownTicks(duration) {
+    clearCountdownTicks();
+    for (const secondsLeft of TICK_MARKS) {
+      const delay = (duration - secondsLeft) * 1000;
+      if (delay < 0) continue;
+      tickTimeoutIds.push(setTimeout(() => sfx.playTick(), delay));
+    }
+  }
 
   // Whichever panel is currently "launchable" — the normal equation
   // panel, or hard mode's final equation — hit/miss/tries/feedback all
@@ -259,21 +280,21 @@ export function mountHud(root, game) {
     hardEquationEl.appendChild(eq);
     appendEquationTokens(hardEquationEl, rhs, hardAnswerInput);
 
-    // The bar's own dt-independent CSS transition is purely cosmetic —
-    // HardSequence.update(dt) is the actual timing authority (see
-    // game/HardSequence.js); this just needs to visually match its duration.
-    hardBarFill.style.transition = 'none';
-    hardBarFill.style.width = '100%';
-    void hardBarFill.offsetWidth; // force reflow so the transition below restarts from 100%
-    hardBarFill.style.transition = `width ${duration}s linear`;
-    hardBarFill.style.width = '0%';
+    restartBar(hardBarFill, duration);
+    scheduleCountdownTicks(duration);
 
     hardAnswerInput.focus();
   }
 
   function showHardLockedIn(message = 'Locked in', variant = 'neutral') {
+    clearCountdownTicks();
     hardForm.hidden = true;
     hardLockedIn.textContent = message;
+    // Force a reflow between hiding and re-showing so the "commit" pop
+    // animation (see .hud__hard-locked-in in style.css) restarts even
+    // when this fires twice in a row with the same variant.
+    hardLockedIn.hidden = true;
+    void hardLockedIn.offsetWidth;
     hardLockedIn.className = `hud__hard-locked-in hud__hard-locked-in--${variant}`;
     hardLockedIn.hidden = false;
   }
@@ -313,13 +334,18 @@ export function mountHud(root, game) {
   }
 
   // Restarts a countdown bar — called on first render of a phase, and
-  // again on a retry, so the clock always starts fresh at 100%.
+  // again on a retry, so the clock always starts fresh at 100%. Also
+  // arms a pulse animation timed to kick in for the final 3 seconds,
+  // via animation-delay rather than a per-frame time check.
   function restartBar(fillEl, duration) {
     fillEl.style.transition = 'none';
+    fillEl.style.animation = 'none';
     fillEl.style.width = '100%';
-    void fillEl.offsetWidth; // force reflow so the transition below restarts from 100%
+    void fillEl.offsetWidth; // force reflow so the transition/animation below restart from scratch
     fillEl.style.transition = `width ${duration}s linear`;
     fillEl.style.width = '0%';
+    const pulseDelay = Math.max(0, duration - 3);
+    fillEl.style.animation = `hud-bar-pulse 0.5s ease-in-out ${pulseDelay}s infinite`;
   }
 
   // Final phase, part 1: three blank inputs — badge/color only, no
@@ -371,6 +397,7 @@ export function mountHud(root, game) {
     hardRecallRow.appendChild(submitButton);
 
     restartBar(hardRecallBarFill, duration);
+    scheduleCountdownTicks(duration);
 
     hardSolveForm.hidden = true;
     hardRecallForm.hidden = false;
@@ -384,6 +411,7 @@ export function mountHud(root, game) {
     const values = hardRecallInputs.map((el) => el.value.trim());
     if (values.some((value) => value === '')) return;
 
+    clearCountdownTicks();
     game.submitHardRecall(values);
   }
 
@@ -440,6 +468,7 @@ export function mountHud(root, game) {
     activeLaunchButton = launchBtn;
 
     restartBar(hardSolveBarFill, duration);
+    scheduleCountdownTicks(duration);
 
     hardRecallForm.hidden = true;
     hardSolveForm.hidden = false;
@@ -453,6 +482,7 @@ export function mountHud(root, game) {
     const value = hardSolveAnswerInput.value.trim();
     if (value === '') return;
 
+    clearCountdownTicks();
     hideFeedback();
     setInputEnabled(false);
     game.submitHardFinal(value);
@@ -493,6 +523,7 @@ export function mountHud(root, game) {
   function handleHardSubmit(event) {
     event.preventDefault();
     if (!hardAnswerInput) return;
+    clearCountdownTicks();
     game.submitHardStep(hardAnswerInput.value);
   }
 
@@ -660,6 +691,7 @@ export function mountHud(root, game) {
     clearTimeout(shakeTimeoutId);
     clearTimeout(advanceTimeoutId);
     clearTimeout(hardLockInTimeoutId);
+    clearCountdownTicks();
     form.removeEventListener('submit', handleSubmit);
     hardForm.removeEventListener('submit', handleHardSubmit);
     hardRecallForm.removeEventListener('submit', handleHardRecallSubmit);

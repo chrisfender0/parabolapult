@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { easeOutQuad, easeInQuad } from '../utils/ease.js';
+import { prefersReducedMotion } from '../utils/motion.js';
 
 // Short-lived visual effects for landings: camera shake, fragment bursts,
 // ground flashes, and material pulses/tweens. Every effect factory here
@@ -32,32 +34,77 @@ export function createEffectsManager() {
 }
 
 /**
- * Decaying screen-space camera shake. trigger() adds trauma (clamped to
- * 1); update() must run every frame regardless of whether a shake is
- * active, since it's also responsible for holding the camera at its base
- * position when idle.
+ * Combines decaying screen-space camera shake with a gentle horizontal
+ * "follow" (and slight zoom-out) toward wherever a shot is headed, all
+ * relative to the camera's position/zoom at creation time.
+ *
+ * update() must run every frame regardless of whether anything is
+ * active — it's also responsible for holding the camera at its resting
+ * position/zoom otherwise.
+ *
+ * The horizontal offset and zoom-out are deliberately small: renderer.js
+ * frames the camera so the *entire* ruler is always visible, so a follow
+ * effect that actually panned to track the projectile would crop the
+ * ends of the ruler. This only nudges toward long shots, it never
+ * recenters on them.
  */
-export function createCameraShake(camera) {
+export function createCameraRig(camera) {
   const basePosition = camera.position.clone();
+  const baseZoom = camera.zoom;
+
+  const MAX_FOLLOW_OFFSET = 0.6;
+  const MAX_ZOOM_OUT = 0.08;
+  const LERP_RATE = 4; // per second
+
   let trauma = 0;
+  let followTarget = 0;
+  let followCurrent = 0;
+  let zoomTarget = 0;
+  let zoomCurrent = 0;
 
   function trigger(amount = 1) {
+    if (prefersReducedMotion()) return;
     trauma = Math.min(1, trauma + amount);
   }
 
-  function update(dt) {
-    if (trauma <= 0) {
-      camera.position.copy(basePosition);
+  /** Call once a shot launches, with the distance it's headed to (and the playable range's max). */
+  function setFlightTarget(landingX, rangeMax = 24) {
+    if (prefersReducedMotion() || !Number.isFinite(landingX)) {
+      followTarget = 0;
+      zoomTarget = 0;
       return;
     }
-    trauma = Math.max(0, trauma - dt * 2.5);
-    const strength = trauma * trauma; // ease-out — sharp at impact, quick to settle
-    const offsetX = (Math.random() * 2 - 1) * 0.35 * strength;
-    const offsetY = (Math.random() * 2 - 1) * 0.35 * strength;
-    camera.position.set(basePosition.x + offsetX, basePosition.y + offsetY, basePosition.z);
+    const t = Math.min(Math.max(landingX / rangeMax, 0), 1);
+    followTarget = t * MAX_FOLLOW_OFFSET;
+    zoomTarget = t * MAX_ZOOM_OUT;
   }
 
-  return { trigger, update };
+  /** Call once a shot has landed, to ease back to the resting framing. */
+  function settle() {
+    followTarget = 0;
+    zoomTarget = 0;
+  }
+
+  function update(dt) {
+    const lerpAmount = Math.min(1, dt * LERP_RATE);
+    followCurrent += (followTarget - followCurrent) * lerpAmount;
+    zoomCurrent += (zoomTarget - zoomCurrent) * lerpAmount;
+
+    let shakeX = 0;
+    let shakeY = 0;
+    if (trauma > 0) {
+      trauma = Math.max(0, trauma - dt * 2.5);
+      const strength = trauma * trauma; // ease-out — sharp at impact, quick to settle
+      shakeX = (Math.random() * 2 - 1) * 0.35 * strength;
+      shakeY = (Math.random() * 2 - 1) * 0.35 * strength;
+    }
+
+    camera.position.set(basePosition.x + followCurrent + shakeX, basePosition.y + shakeY, basePosition.z);
+    camera.zoom = baseZoom * (1 - zoomCurrent);
+    camera.updateProjectionMatrix();
+  }
+
+  return { trigger, setFlightTarget, settle, update };
 }
 
 /** A dozen tumbling fragments with simple gravity, fading out over their lifetime. */
@@ -145,8 +192,73 @@ export function createGroundFlash(scene, x, color) {
     if (!alive) return;
     elapsed += dt;
     const t = Math.min(elapsed / DURATION, 1);
-    mesh.scale.setScalar(1 + t * 1.8);
-    mesh.material.opacity = 0.85 * (1 - t);
+    const eased = easeOutQuad(t);
+    mesh.scale.setScalar(1 + eased * 1.8);
+    mesh.material.opacity = 0.85 * (1 - eased);
+    if (t >= 1) dispose();
+  }
+
+  return { update, get alive() { return alive; } };
+}
+
+/** A soft, fast-expanding puff at the crash point — rounder and slower than the sharp flash ring. */
+export function createDustPuff(scene, position, color = 0xb9c4d1) {
+  const DURATION = 0.6;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(0.45, 20),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 })
+  );
+  mesh.position.set(position.x, 0.05, 0.22);
+  scene.add(mesh);
+
+  let elapsed = 0;
+  let alive = true;
+
+  function dispose() {
+    alive = false;
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+
+  function update(dt) {
+    if (!alive) return;
+    elapsed += dt;
+    const t = Math.min(elapsed / DURATION, 1);
+    const eased = easeOutQuad(t);
+    mesh.scale.setScalar(1 + eased * 2.4);
+    mesh.material.opacity = 0.5 * (1 - eased);
+    if (t >= 1) dispose();
+  }
+
+  return { update, get alive() { return alive; } };
+}
+
+/** A lingering scorch mark on the ground at world x — fades out over a couple of seconds. */
+export function createScorchMark(scene, x, color = 0x140b09) {
+  const DURATION = 2.4;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(0.55, 24),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 })
+  );
+  mesh.position.set(x, 0.015, 0.15);
+  scene.add(mesh);
+
+  let elapsed = 0;
+  let alive = true;
+
+  function dispose() {
+    alive = false;
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+
+  function update(dt) {
+    if (!alive) return;
+    elapsed += dt;
+    const t = Math.min(elapsed / DURATION, 1);
+    mesh.material.opacity = 0.6 * (1 - easeInQuad(t));
     if (t >= 1) dispose();
   }
 
@@ -207,13 +319,13 @@ export function squashAndFade(mesh, { duration = 0.25 } = {}) {
   function update(dt) {
     if (!alive) return;
     elapsed += dt;
-    const t = Math.min(elapsed / duration, 1);
+    const t = easeOutQuad(Math.min(elapsed / duration, 1));
     mesh.scale.set(
       baseScale.x * (1 + t * 1.4),
       baseScale.y * Math.max(0.15, 1 - t * 1.3),
       baseScale.z * (1 + t * 1.4)
     );
-    if (t >= 1) {
+    if (elapsed >= duration) {
       mesh.visible = false;
       alive = false;
     }
@@ -231,10 +343,10 @@ export function dropIntoContainer(mesh, { duration = 0.25, depth = 0.35 } = {}) 
   function update(dt) {
     if (!alive) return;
     elapsed += dt;
-    const t = Math.min(elapsed / duration, 1);
+    const t = easeOutQuad(Math.min(elapsed / duration, 1));
     mesh.position.y = startY - depth * t;
     mesh.scale.setScalar(Math.max(0.1, 1 - 0.6 * t));
-    if (t >= 1) {
+    if (elapsed >= duration) {
       mesh.visible = false;
       alive = false;
     }
