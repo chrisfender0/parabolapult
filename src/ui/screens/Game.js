@@ -42,12 +42,18 @@ export function mount(root, ctx) {
 
   const game = new GameController({ projectile, target });
 
-  // The target stays hidden until the round is actually decided — a hit,
-  // or the last miss once tries run out. Revealing it on every miss would
-  // hand over the answer for whatever retries are still left; a fresh
-  // round hides it again regardless of how the last one ended.
-  game.on('round:begin', () => {
-    target.hide();
+  // Classic: the target stays hidden until the round is actually decided —
+  // a hit, or the last miss once tries run out. Revealing it on every miss
+  // would hand over the answer for whatever retries are still left; a
+  // fresh round hides it again regardless of how the last one ended.
+  //
+  // Parabolic: the target has to be visible from the start. Its blank
+  // needs the target's actual number to build (`12 − x` requires knowing
+  // it's 12) — unlike Classic, where the equation alone determines the
+  // answer and the target's position is never needed to solve it.
+  game.on('round:begin', ({ mode }) => {
+    if (mode === 'parabolic') target.reveal();
+    else target.hide();
     cameraRig.settle();
   });
 

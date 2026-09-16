@@ -127,6 +127,16 @@ Run against the same build as the rest of this pass, driven through the
 automated browser pane plus `window.__game.submitParabolic()` for fast
 regression loops (see the debug-mode note at the top of this file).
 
+- [x] **Target visibility** (bug found and fixed after this pass's first
+      round-trip) — Chris flagged that a fresh Parabolic round showed no
+      target at all: `target.hide()` (the same hide-until-landed behavior
+      Classic uses) left the container invisible, but Parabolic's blank
+      needs the target's actual number to build, unlike Classic where the
+      equation alone determines the answer. Fixed in
+      `src/ui/screens/Game.js`'s `round:begin` handler — Parabolic now
+      calls `target.reveal()` instead of `target.hide()`. Re-verified with
+      debug mode **off**: the container is visible on the ruler from the
+      start of every Parabolic round; Classic still hides it as before.
 - [x] **Setup screen** — mode toggle switches card descriptions between
       Classic's and Parabolic's (factored/standard/vertex wording); last
       selected mode is remembered across a reload.
