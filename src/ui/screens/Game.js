@@ -54,6 +54,7 @@ export function mount(root, ctx) {
   game.on('launch', ({ value }) => {
     sfx.playLaunch();
     cameraRig.setFlightTarget(value);
+    launcher.fire();
   });
 
   // Set once by round:scored (which always fires before try:hit/try:miss
@@ -113,6 +114,7 @@ export function mount(root, ctx) {
     projectile.update(dt);
     effects.update(dt);
     cameraRig.update(dt);
+    launcher.update(dt);
     game.updateHard(dt);
   });
 
@@ -128,7 +130,10 @@ export function mount(root, ctx) {
     hud.unmount();
     // launcher/target belong to the persistent world (main.js) and stay
     // in the scene for Landing/Setup — only the projectile is this
-    // screen's own.
+    // screen's own. The launcher's arm swing is only ever driven while
+    // this screen's updater is registered, so reset it in case a round
+    // ends mid-swing.
+    launcher.reset();
     scene.remove(projectile.group);
   };
 }

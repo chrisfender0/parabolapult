@@ -11,9 +11,8 @@ export function buildWorld(scene) {
   const ruler = createRuler();
   scene.add(ruler);
 
-  const { group: launcherGroup, muzzle } = createLauncher();
-  scene.add(launcherGroup);
-  const launcher = { group: launcherGroup, muzzle };
+  const launcher = createLauncher();
+  scene.add(launcher.group);
 
   const target = createTarget();
   scene.add(target.group);
