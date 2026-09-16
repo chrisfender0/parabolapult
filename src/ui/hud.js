@@ -5,6 +5,7 @@
 
 import { isDebugEnabled } from '../core/debugHooks.js';
 import { mountKeypad } from './keypad.js';
+import { formatLinear } from '../math/linearExpr.js';
 import * as sfx from '../audio/sfx.js';
 
 const MAX_TRIES = 3;
@@ -790,7 +791,11 @@ export function mountHud(root, game) {
 
     if (currentMode === 'parabolic') {
       let message = describeParabolicLanding(flightKind, landedAt);
-      if (revealTarget) message += ` — target was ${targetAt}`;
+      // The target container is visible on the ruler from the start of a
+      // Parabolic round (see ui/screens/Game.js), so naming its number
+      // again here is redundant — what the player actually needs once
+      // they're out of tries is the equation that would have hit it.
+      if (revealTarget) message += ` — correct: ${formatLinear(game.equation.solution)}`;
       showFeedback(message, 'miss');
       shakeParabolicBlank();
       // Unlike Classic, the typed expression is kept after a miss — the
