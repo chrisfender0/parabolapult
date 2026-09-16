@@ -127,6 +127,20 @@ Run against the same build as the rest of this pass, driven through the
 automated browser pane plus `window.__game.submitParabolic()` for fast
 regression loops (see the debug-mode note at the top of this file).
 
+- [x] **Classic keyboard input** (bug found and fixed after this pass's
+      first round-trip) — Chris reported Classic mode's answer field
+      wouldn't accept typed digits at all. Cause: `keypad.js`'s global
+      `document`-level keydown listener (added for Parabolic's physical-
+      keyboard support) guarded itself with `pad.hidden`, but hud.js only
+      ever hides the *ancestor* `hud__parabolic-panel` in Classic mode —
+      `pad.hidden` itself was never set, so the guard stayed `false`
+      forever and every digit typed into Classic's own input also hit the
+      keypad's handler and got `preventDefault()`'d. Fixed by checking
+      `pad.offsetParent === null` instead, which reflects the real
+      hidden-via-ancestor state. Re-verified with real per-key `keydown`
+      events (not synthetic text-insert, which had been masking this in
+      earlier testing): Classic's answer field accepts typed digits again,
+      Parabolic's own keyboard entry (digits, `x`, `+`, `-`) still works.
 - [x] **Target visibility** (bug found and fixed after this pass's first
       round-trip) — Chris flagged that a fresh Parabolic round showed no
       target at all: `target.hide()` (the same hide-until-landed behavior

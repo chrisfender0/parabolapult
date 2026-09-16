@@ -79,8 +79,14 @@ export function mountKeypad(root, { onChange, onSubmit }) {
   root.appendChild(pad);
 
   // Physical keyboard support for desktop, per plan/13.1-parabolic-play.md.
+  // Checked via offsetParent (null when the keypad or any ancestor is
+  // display:none) rather than pad.hidden: hud.js hides the *ancestor*
+  // panel when Classic mode is active, which never touches this element's
+  // own `hidden` property, so that check silently stayed false forever —
+  // meaning every digit typed into Classic's answer field also hit this
+  // handler and got preventDefault()'d before it could reach the input.
   function handleKeydown(event) {
-    if (pad.hidden || buttons[0]?.disabled) return;
+    if (pad.offsetParent === null || buttons[0]?.disabled) return;
     const key = event.key;
     if (/^[0-9]$/.test(key)) pressKey(key);
     else if (key.toLowerCase() === 'x') pressKey('x');
