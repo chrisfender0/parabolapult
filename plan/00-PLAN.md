@@ -32,7 +32,8 @@ The player does not type the distance directly — they type the **answer to an 
   - **Easy** — direct arithmetic. `7 + 5 = ▢`. Answer is the landing distance.
   - **Medium** — solve for an unknown. `x + 3 = 15`, answer `12`. Still one operation (`+ − × ÷`).
   - **Hard** — three timed medium equations shown one at a time, each in its own color, each with **no correctness feedback**. The player must remember all three results. Then a fourth equation appears with three color-outlined inputs (matching the earlier boxes) joined by randomized `+` / `−` only. The player re-enters what they remember; the expression's value is the launch distance.
-- Flow: landing page (leaderboard + Play) → name + difficulty select → game → results. All state in `localStorage`, no backend.
+- **Two modes** (sessions 13/13.1): the difficulties above are **Classic**. **Parabolic** mode has the player type one linear piece (`ax + b`) into a parabola template instead of a number — Easy `y = x · ( ▢ )`, Medium `y = −x² + ▢`, Hard `y = −( ▢ )² + c` — and the projectile lands at the resulting equation's root. The player picks a mode, then a difficulty; all 5 rounds use that difficulty. No memorization phase in Parabolic.
+- Flow: landing page (leaderboard + Play) → name + mode + difficulty select → game → results. All state in `localStorage`, no backend.
 - Scoring rewards first-try hits and, on hard, speed on the timed equations.
 
 ## Repo layout
@@ -74,12 +75,14 @@ Each numbered file is one session — small enough to finish in a single sitting
 10. **10.1-hard-mode-final-equation.md** — Fourth equation with three color-outlined inputs and randomized `+`/`−` operators, value range clamping, retry behavior (retries replay only the final equation), launch wiring.
 11. **11-polish-and-audio.md** — Easing/timing polish, camera follow on flight, crash particles, celebration on hit, sound hooks (mutable stubs OK).
 12. **12-testing-and-readme.md** — Manual test checklist across all three difficulties and viewport sizes, README with run/build/deploy instructions, final production build verification.
+13. **13-parabolic-engine.md** — Parabolic mode math: linear-expression parser, factored/standard/vertex generators, integer coefficient grading, flight kinds for wrong answers (dive, orbit, fizzle, overshoot).
+13. **13.1-parabolic-play.md** — Parabolic mode playable: mode toggle on Setup, on-screen keypad, controller wiring, new flight animations, mode-aware scoring/leaderboard/results, test checklist.
 
 ## Suggested order
 
-1 → 1.1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8.1 → 9 → 10 → 10.1 → 11 → 12.
+1 → 1.1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8.1 → 9 → 10 → 10.1 → 11 → 12 → 13 → 13.1.
 
-Everything through session 9 is a complete, playable game on easy and medium. Sessions 10/10.1 add hard mode. 11 and 12 are polish and release hygiene and can be trimmed if time is short.
+Everything through session 9 is a complete, playable game on easy and medium. Sessions 10/10.1 add hard mode. 11 and 12 are polish and release hygiene and can be trimmed if time is short. 13/13.1 add the Parabolic mode after release.
 
 ## Working agreement
 
